@@ -68,6 +68,8 @@ export function buildChatResponse(
       : null);
 
   return {
+    needs_clarification: llmOutput.needs_clarification ?? false,
+    clarifying_question: llmOutput.clarifying_question ?? null,
     answer: llmOutput.answer,
     summary: llmOutput.summary,
     citations,

@@ -30,13 +30,31 @@ ${evidenceText || '(no ayahs retrieved)'}
 
 USER QUESTION: ${question}
 
-RESPONSE RULES:
+STEP 1 — CLARIFICATION CHECK (do this before answering):
+Ask yourself: "Is this question clear enough to answer from the Quran?"
+Request clarification if ANY of these apply:
+  • The question is too vague or broad (e.g., "tell me about Islam", "explain everything")
+  • A single word with no context (e.g., "prayer", "zakat")
+  • The question could mean 2+ very different things with different answers
+  • A term is used that is completely unrecognizable and not an Islamic concept
+If clarification is needed, set "needs_clarification": true and write a SHORT, friendly
+counter-question in "clarifying_question" offering 2–3 specific options. Leave answer/citations empty.
+
+Do NOT request clarification for:
+  • Questions using Arabic Islamic terms (jihad, salah, zakat, taqwa, etc.) — the system knows these
+  • Questions with minor grammar issues but clear intent
+  • Broad but mappable questions (e.g., "what is prayer", "what does Islam say about kindness")
+
+STEP 2 — ANSWER (only if no clarification needed):
 1. Answer ONLY using the evidence above. Never invent citations.
 2. Each citation quote must be an EXACT verbatim substring of the ayah text above.
 3. If evidence is insufficient, set confidence="low" and explain in limitations.
-4. Return ONLY valid JSON matching this exact schema — no markdown fences, no extra text:
+
+Return ONLY valid JSON — no markdown fences, no extra text:
 
 {
+  "needs_clarification": false,
+  "clarifying_question": null,
   "answer": "<full answer>",
   "summary": "<≤30 word summary>",
   "citations": [
@@ -44,6 +62,17 @@ RESPONSE RULES:
   ],
   "limitations": "<null or explanation if evidence is weak>",
   "confidence": "<high|medium|low>"
+}
+
+If clarification needed, use this shape instead:
+{
+  "needs_clarification": true,
+  "clarifying_question": "<short friendly question with 2-3 options>",
+  "answer": "",
+  "summary": "",
+  "citations": [],
+  "limitations": null,
+  "confidence": "low"
 }`;
 }
 
@@ -54,6 +83,8 @@ export async function generateChatResponse(
   const prompt = buildChatPrompt(question, evidence);
   const raw = await callLLM(prompt);
   return parseWithRepair<LLMChatOutput>(raw, {
+    needs_clarification: false,
+    clarifying_question: null,
     answer: 'Unable to generate a response at this time.',
     summary: 'Error',
     citations: [],

@@ -8,12 +8,15 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   data?: ChatResponse;
+  isClarification?: boolean;
 }
 
 export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  // Track when the user is answering a clarification request
+  const [pendingClarification, setPendingClarification] = useState<{ originalQuestion: string } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -24,21 +27,32 @@ export default function ChatPage() {
     const q = input.trim();
     if (!q || loading) return;
 
+    // Capture before clearing so we can restore on failure
+    const currentClarification = pendingClarification;
+
+    // If answering a clarification, combine with original question
+    const apiQuestion = currentClarification
+      ? `${currentClarification.originalQuestion} [User clarified: ${q}]`
+      : q;
+
     const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: q };
     setMessages((m) => [...m, userMsg]);
     setInput('');
+    setPendingClarification(null);
     setLoading(true);
 
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q }),
+        body: JSON.stringify({ question: apiQuestion }),
       });
       const json = await res.json();
 
       if (!res.ok) {
         const err = json as ApiError;
+        // Restore clarification context so user can retry
+        setPendingClarification(currentClarification);
         setMessages((m) => [
           ...m,
           {
@@ -49,17 +63,35 @@ export default function ChatPage() {
         ]);
       } else {
         const data = json as ChatResponse;
-        setMessages((m) => [
-          ...m,
-          {
-            id: crypto.randomUUID(),
-            role: 'assistant',
-            content: data.answer,
-            data,
-          },
-        ]);
+
+        if (data.needs_clarification && data.clarifying_question) {
+          // Show clarifying question; remember original question for next send
+          setPendingClarification({ originalQuestion: apiQuestion });
+          setMessages((m) => [
+            ...m,
+            {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: data.clarifying_question!,
+              data,
+              isClarification: true,
+            },
+          ]);
+        } else {
+          setMessages((m) => [
+            ...m,
+            {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: data.answer,
+              data,
+            },
+          ]);
+        }
       }
     } catch {
+      // Restore clarification context so user can retry
+      setPendingClarification(currentClarification);
       setMessages((m) => [
         ...m,
         { id: crypto.randomUUID(), role: 'assistant', content: 'Network error. Please try again.' },
@@ -86,13 +118,20 @@ export default function ChatPage() {
               className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                 msg.role === 'user'
                   ? 'bg-emerald-600 text-white'
+                  : msg.isClarification
+                  ? 'bg-amber-900/40 border border-amber-600/50 text-slate-100'
                   : 'bg-slate-800 text-slate-100'
               }`}
             >
+              {msg.isClarification && (
+                <p className="text-[10px] font-semibold text-amber-400 mb-1 uppercase tracking-wide">
+                  🤔 Need a bit more info
+                </p>
+              )}
               <p className="whitespace-pre-wrap">{msg.content}</p>
 
               {/* Citations */}
-              {msg.data && msg.data.citations.length > 0 && (
+              {msg.data && !msg.isClarification && msg.data.citations.length > 0 && (
                 <div className="mt-3 border-t border-slate-600 pt-2 flex flex-col gap-2">
                   {msg.data.citations.map((c, i) => (
                     <a
@@ -108,7 +147,7 @@ export default function ChatPage() {
               )}
 
               {/* Metadata */}
-              {msg.data && (
+              {msg.data && !msg.isClarification && (
                 <div className="mt-2 flex items-center gap-2 flex-wrap">
                   <span
                     className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
@@ -141,11 +180,26 @@ export default function ChatPage() {
         <div ref={bottomRef} />
       </div>
 
+      {/* Clarification hint */}
+      {pendingClarification && !loading && (
+        <p className="text-xs text-amber-400 text-center animate-pulse">
+          ↑ Reply to clarify your question above
+        </p>
+      )}
+
       {/* Input */}
       <div className="flex gap-2 mt-2">
         <input
-          className="flex-1 rounded-xl bg-slate-800 border border-slate-700 px-4 py-3 text-sm outline-none focus:border-emerald-500 transition-colors placeholder:text-slate-500"
-          placeholder="Ask anything — e.g. &quot;What does the Quran say about patience?&quot;"
+          className={`flex-1 rounded-xl bg-slate-800 border px-4 py-3 text-sm outline-none transition-colors placeholder:text-slate-500 ${
+            pendingClarification
+              ? 'border-amber-600 focus:border-amber-400'
+              : 'border-slate-700 focus:border-emerald-500'
+          }`}
+          placeholder={
+            pendingClarification
+              ? 'Type your clarification…'
+              : 'Ask anything — e.g. "What does the Quran say about patience?"'
+          }
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}

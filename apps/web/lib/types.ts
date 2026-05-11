@@ -32,6 +32,8 @@ export interface Citation {
 }
 
 export interface ChatResponse {
+  needs_clarification?: boolean;
+  clarifying_question?: string | null;
   answer: string;
   summary: string;
   citations: Citation[];
@@ -63,6 +65,8 @@ export interface ApiError {
 }
 
 export interface LLMChatOutput {
+  needs_clarification?: boolean;
+  clarifying_question?: string | null;
   answer: string;
   summary: string;
   citations: Array<{ reference: string; quote: string }>;

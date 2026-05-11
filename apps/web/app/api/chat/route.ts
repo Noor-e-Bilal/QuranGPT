@@ -66,12 +66,14 @@ export async function POST(req: NextRequest) {
 
   try {
     const evidence = await retrieve(question);
+    const llmOutput = await generateChatResponse(question, evidence);
 
-    if (evidence.hitCount === 0) {
+    // If retrieval found nothing and the LLM isn't asking for clarification,
+    // return a safe fallback to prevent ungrounded answers.
+    if (evidence.hitCount === 0 && !llmOutput.needs_clarification) {
       return NextResponse.json(fallbackChatResponse(requestId));
     }
 
-    const llmOutput = await generateChatResponse(question, evidence);
     const response = buildChatResponse(llmOutput, evidence, requestId);
     return NextResponse.json(response);
   } catch (err) {
