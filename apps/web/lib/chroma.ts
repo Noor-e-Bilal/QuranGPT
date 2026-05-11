@@ -58,10 +58,15 @@ export async function queryCollection(
 
 export async function checkChromaHealth(): Promise<boolean> {
   try {
-    const res = await fetch(`${CHROMA_URL}/api/v1/heartbeat`, {
+    // Try v2 API first (chromadb >= 0.6), fall back to v1
+    const res = await fetch(`${CHROMA_URL}/api/v2/heartbeat`, {
       signal: AbortSignal.timeout(3000),
     });
-    return res.ok;
+    if (res.ok) return true;
+    const res1 = await fetch(`${CHROMA_URL}/api/v1/heartbeat`, {
+      signal: AbortSignal.timeout(3000),
+    });
+    return res1.ok;
   } catch {
     return false;
   }

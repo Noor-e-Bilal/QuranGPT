@@ -4,6 +4,13 @@ extract_pdf.py — Extract all ayahs from The Clear Quran PDF.
 Output: data/ayahs.json
 Schema: [{surah, ayah, reference, text, display_text, tokens_count}]
 
+The Clear Quran layout:
+  - Surah header:  "N. Title\n(Arabic Name)\n<intro paragraph>"
+  - Ayahs:         inline numbered "1. text 2. text 3. text…"
+  - Footnotes:     [N] markers — stripped
+  - Bismillah:     standalone line before ayahs (except surah 9)
+  - Section heads: thematic headings between ayahs — left in text, harmless
+
 Run from repo root:
     python3 scripts/ingest/extract_pdf.py
 """
@@ -17,7 +24,6 @@ ROOT = Path(__file__).resolve().parents[2]
 PDF_PATH = ROOT / "Docs" / "the-clear-quran-a-thematic-english-translation.pdf"
 OUTPUT_PATH = ROOT / "data" / "ayahs.json"
 
-# Known ayah counts for all 114 surahs (authoritative reference)
 AYAH_COUNTS = [
     7, 286, 200, 176, 120, 165, 206, 75, 129, 109,
     123, 111, 43, 52, 99, 128, 111, 110, 98, 135,
@@ -29,23 +35,20 @@ AYAH_COUNTS = [
     28, 28, 20, 56, 40, 31, 50, 40, 46, 42,
     29, 19, 36, 25, 22, 17, 19, 26, 30, 20,
     15, 21, 11, 8, 8, 19, 5, 8, 8, 11,
-    11, 8, 3, 9, 5, 4, 5, 6, 5, 8,
-    3, 5, 6, 5, 3, 5, 3, 6, 3, 5,
-    4, 5, 29, 15,
+    11, 8, 3, 9, 5, 4, 7, 3, 6, 3,
+    5, 4, 5, 6,
 ]
 
 assert len(AYAH_COUNTS) == 114, "AYAH_COUNTS must have exactly 114 entries"
 
-# Patterns used to detect ayah boundaries
-# Many translations mark ayahs as (n) or with |number|
-AYAH_NUMBER_PATTERN = re.compile(r'\((\d{1,3})\)')
-SURAH_HEADER_PATTERN = re.compile(
-    r'(?:Chapter|Surah|S[Uu][Rr][Aa][Hh])\s*[:\-–—]?\s*(\d{1,3})', re.IGNORECASE
+# Matches "N. Title\n(Arabic Name)" — title may start with decorative bracket ˹
+SURAH_HEADER_RE = re.compile(
+    r'(?:^|\n)(\d{1,3})\.\s+[^\n]+\n\s*\([^\)]+\)',
+    re.MULTILINE,
 )
-BISMILLAH_PATTERN = re.compile(
-    r'In the name of (Allah|God),?\s+the Entirely Merciful,?\s+the Especially Merciful',
-    re.IGNORECASE,
-)
+
+FOOTNOTE_RE = re.compile(r'\[\d+\]')
+WHITESPACE_RE = re.compile(r'\s+')
 
 
 def extract_pages(pdf_path: Path) -> list[str]:
@@ -57,160 +60,91 @@ def extract_pages(pdf_path: Path) -> list[str]:
     pages: list[str] = []
     with pdfplumber.open(str(pdf_path)) as pdf:
         for page in pdf.pages:
-            text = page.extract_text() or ""
-            pages.append(text)
+            pages.append(page.extract_text() or "")
     return pages
 
 
-def clean_line(line: str) -> str:
-    return re.sub(r'\s+', ' ', line).strip()
+def clean_text(text: str) -> str:
+    text = FOOTNOTE_RE.sub("", text)
+    return WHITESPACE_RE.sub(" ", text).strip()
 
 
-def parse_ayahs(pages: list[str]) -> list[dict]:
+def extract_ayahs_from_surah(text: str, surah_num: int, expected: int) -> list[dict]:
     """
-    Heuristic parser for The Clear Quran layout.
-
-    The Clear Quran uses a consistent format: ayah number appears in parentheses
-    at the end of the ayah, e.g.: "All praise is for Allah..." (1)
-    Surah boundaries are detected by chapter headers.
+    Extract ayahs from the text block of one surah using sequential inline numbering.
+    The Clear Quran places ayah numbers inline: "1. text 2. text 3. text…"
     """
+    text = clean_text(text)
+    ayahs: list[dict] = []
+    pos = 0
+
+    for n in range(1, expected + 1):
+        # (?<!\d) ensures we don't match "14. " when looking for "4. "
+        match = re.search(r"(?<!\d)" + str(n) + r"\. ", text[pos:])
+        if not match:
+            print(f"  WARNING: {surah_num}:{n} not found (searched from pos {pos})", file=sys.stderr)
+            break
+
+        ayah_start = pos + match.end()
+
+        if n < expected:
+            end_match = re.search(r"(?<!\d)" + str(n + 1) + r"\. ", text[ayah_start:])
+            ayah_end = ayah_start + end_match.start() if end_match else len(text)
+        else:
+            ayah_end = len(text)
+
+        ayah_text = WHITESPACE_RE.sub(" ", text[ayah_start:ayah_end]).strip()
+        if ayah_text:
+            ref = f"{surah_num}:{n}"
+            ayahs.append({
+                "surah": surah_num,
+                "ayah": n,
+                "reference": ref,
+                "text": ayah_text,
+                "display_text": ayah_text,
+                "tokens_count": len(ayah_text.split()),
+            })
+
+        pos = ayah_start
+
+    return ayahs
+
+
+def parse_all(pages: list[str]) -> list[dict]:
     full_text = "\n".join(pages)
 
-    # We'll do a two-pass approach:
-    # Pass 1: find surah/chapter boundaries
-    # Pass 2: within each surah block, extract numbered ayahs
+    # Collect unique surah headers (first occurrence of each surah number wins)
+    seen: set[int] = set()
+    boundaries: list[tuple[int, int, int]] = []  # (surah_num, match_start, match_end)
+    for m in SURAH_HEADER_RE.finditer(full_text):
+        sn = int(m.group(1))
+        if 1 <= sn <= 114 and sn not in seen:
+            seen.add(sn)
+            boundaries.append((sn, m.start(), m.end()))
 
-    # Split into lines for processing
-    lines = [clean_line(l) for l in full_text.splitlines() if clean_line(l)]
+    boundaries.sort(key=lambda x: x[1])  # sort by position in text
+    print(f"  Found {len(boundaries)} surah headers", file=sys.stderr)
 
-    ayahs: list[dict] = []
-    current_surah = 0
-    buffer_lines: list[str] = []
-    surah_buffers: list[tuple[int, list[str]]] = []  # (surah_num, lines)
+    if len(boundaries) < 100:
+        sys.exit(f"ERROR: Only {len(boundaries)} surah headers detected — aborting.")
 
-    for line in lines:
-        surah_match = SURAH_HEADER_PATTERN.search(line)
-        if surah_match:
-            new_surah = int(surah_match.group(1))
-            if 1 <= new_surah <= 114 and new_surah != current_surah:
-                if current_surah > 0 and buffer_lines:
-                    surah_buffers.append((current_surah, list(buffer_lines)))
-                current_surah = new_surah
-                buffer_lines = []
-                continue
-        if current_surah > 0:
-            buffer_lines.append(line)
+    all_ayahs: list[dict] = []
+    for i, (sn, _start, end) in enumerate(boundaries):
+        next_start = boundaries[i + 1][1] if i + 1 < len(boundaries) else len(full_text)
+        surah_text = full_text[end:next_start]
+        expected = AYAH_COUNTS[sn - 1]
+        ayahs = extract_ayahs_from_surah(surah_text, sn, expected)
+        if len(ayahs) < expected:
+            print(
+                f"  WARNING: Surah {sn}: extracted {len(ayahs)}/{expected} ayahs",
+                file=sys.stderr,
+            )
+        all_ayahs.extend(ayahs)
 
-    if current_surah > 0 and buffer_lines:
-        surah_buffers.append((current_surah, list(buffer_lines)))
-
-    # If we detected < 50 surahs, fall back to sequential number-based parsing
-    if len(surah_buffers) < 50:
-        print(
-            f"WARNING: Only detected {len(surah_buffers)} surah headers. "
-            "Falling back to flat sequential parsing."
-        )
-        ayahs = _flat_parse(full_text)
-    else:
-        for surah_num, slines in surah_buffers:
-            surah_ayahs = _parse_surah_lines(surah_num, slines)
-            ayahs.extend(surah_ayahs)
-
-    return ayahs
+    return all_ayahs
 
 
-def _parse_surah_lines(surah: int, lines: list[str]) -> list[dict]:
-    """Extract ayahs from lines belonging to a single surah."""
-    expected = AYAH_COUNTS[surah - 1]
-    result: list[dict] = []
-
-    # Join lines into continuous text
-    text_blob = " ".join(lines)
-
-    # Find all (N) markers
-    # An ayah ends at its (N) marker
-    segments = re.split(r'\((\d{1,3})\)', text_blob)
-    # segments: [pre_1, num_1, pre_2, num_2, ...]
-
-    current_text_parts: list[str] = []
-
-    for i, seg in enumerate(segments):
-        if i % 2 == 0:
-            # Text part
-            current_text_parts.append(seg.strip())
-        else:
-            # Ayah number
-            ayah_num = int(seg)
-            raw = " ".join(current_text_parts).strip()
-            raw = re.sub(r'\s+', ' ', raw)
-            # Strip Bismillah from ayah 1 if it accidentally absorbs it
-            raw = BISMILLAH_PATTERN.sub('', raw).strip()
-            if raw and 1 <= ayah_num <= expected:
-                result.append(_make_ayah(surah, ayah_num, raw))
-            current_text_parts = []
-
-    # Deduplicate by ayah number, keeping last occurrence
-    seen: dict[int, dict] = {}
-    for a in result:
-        seen[a['ayah']] = a
-    return [seen[k] for k in sorted(seen.keys())]
-
-
-def _flat_parse(full_text: str) -> list[dict]:
-    """
-    Last-resort parser: assume the PDF is a continuous stream.
-    We detect surah transitions by counting: when ayah (N) appears and
-    the previous surah's count is satisfied, we advance the surah counter.
-    """
-    segments = re.split(r'\((\d{1,3})\)', full_text)
-    ayahs: list[dict] = []
-    current_surah = 1
-    expected_next = 1
-    current_text_parts: list[str] = []
-
-    for i, seg in enumerate(segments):
-        if i % 2 == 0:
-            current_text_parts.append(seg.strip())
-        else:
-            ayah_num = int(seg)
-            raw = " ".join(current_text_parts).strip()
-            raw = re.sub(r'\s+', ' ', raw)
-            raw = BISMILLAH_PATTERN.sub('', raw).strip()
-            current_text_parts = []
-
-            if ayah_num == 1 and expected_next > 1:
-                # Likely a new surah
-                current_surah += 1
-                if current_surah > 114:
-                    break
-                expected_next = 1
-
-            expected = AYAH_COUNTS[current_surah - 1]
-            if raw and ayah_num == expected_next and ayah_num <= expected:
-                ayahs.append(_make_ayah(current_surah, ayah_num, raw))
-                expected_next = ayah_num + 1
-                if expected_next > expected:
-                    current_surah += 1
-                    if current_surah > 114:
-                        break
-                    expected_next = 1
-
-    return ayahs
-
-
-def _make_ayah(surah: int, ayah: int, text: str) -> dict:
-    reference = f"{surah}:{ayah}"
-    return {
-        "surah": surah,
-        "ayah": ayah,
-        "reference": reference,
-        "text": text,
-        "display_text": text,
-        "tokens_count": len(text.split()),
-    }
-
-
-def main():
+def main() -> None:
     if not PDF_PATH.exists():
         sys.exit(f"ERROR: PDF not found at {PDF_PATH}")
 
@@ -221,11 +155,11 @@ def main():
     print(f"  Read {len(pages)} pages.")
 
     print("Parsing ayahs …")
-    ayahs = parse_ayahs(pages)
+    ayahs = parse_all(pages)
     print(f"  Parsed {len(ayahs)} ayahs.")
 
     if len(ayahs) == 0:
-        sys.exit("ERROR: No ayahs extracted. Check PDF format.")
+        sys.exit("ERROR: No ayahs extracted.")
 
     OUTPUT_PATH.write_text(json.dumps(ayahs, ensure_ascii=False, indent=2))
     print(f"  Saved to {OUTPUT_PATH}")

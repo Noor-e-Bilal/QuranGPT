@@ -12,9 +12,15 @@ function client() {
 
 // ---------- Chat ----------------------------------------------------------
 
+const MAX_AYAH_CHARS = 200;
+
+function truncate(text: string, max: number): string {
+  return text.length <= max ? text : text.slice(0, max - 1) + '…';
+}
+
 function buildChatPrompt(question: string, evidence: EvidenceBundle): string {
   const evidenceText = evidence.ayahs
-    .map((a) => `[${a.reference}] "${a.display_text}"`)
+    .map((a) => `[${a.reference}] "${truncate(a.display_text, MAX_AYAH_CHARS)}"`)
     .join('\n');
 
   return `You are QuranSays, a scholarly assistant that answers ALL questions exclusively from The Clear Quran.
@@ -97,7 +103,7 @@ export async function generateVerseExplanation(
 async function callLLM(prompt: string): Promise<string> {
   const msg = await client().messages.create({
     model: MODEL,
-    max_tokens: 1024,
+    max_tokens: 1500,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -123,6 +129,7 @@ function parseWithRepair<T>(raw: string, fallback: T): T {
         // fall through
       }
     }
+    console.error('[LLM] parse failed, using fallback. Raw preview:', raw.slice(0, 200));
     return fallback;
   }
 }
