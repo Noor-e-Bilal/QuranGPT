@@ -103,7 +103,7 @@ export async function generateVerseExplanation(
 async function callLLM(prompt: string): Promise<string> {
   const msg = await client().messages.create({
     model: MODEL,
-    max_tokens: 1500,
+    max_tokens: 3000,
     messages: [{ role: 'user', content: prompt }],
   });
 

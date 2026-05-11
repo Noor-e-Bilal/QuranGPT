@@ -1,4 +1,4 @@
-import { searchFTS, getAyahsByReferences } from './db';
+import { searchFTS, getAyahsByReferences, expandQueryForSemantic } from './db';
 import { queryCollection } from './chroma';
 import type { EvidenceAyah, EvidenceBundle } from './types';
 
@@ -8,9 +8,10 @@ const SCORE_THRESHOLD = 0.25;
 const TOP_K = 5;
 
 export async function retrieve(query: string): Promise<EvidenceBundle> {
+  const expandedQuery = expandQueryForSemantic(query);
   const [ftsRows, chromaRows] = await Promise.all([
     Promise.resolve(searchFTS(query, 20)),
-    queryCollection(query, 20).catch(() => []),
+    queryCollection(expandedQuery, 20).catch(() => []),
   ]);
 
   const scores = new Map<string, { fts: number; semantic: number }>();
