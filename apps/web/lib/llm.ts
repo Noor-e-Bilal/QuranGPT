@@ -66,12 +66,12 @@ export async function generateChatResponse(
 
 function buildVersePrompt(ayah: AyahRow, related: AyahRow[]): string {
   const relatedText = related
-    .map((a) => `[${a.reference}] "${a.display_text}"`)
+    .map((a) => `[${a.reference}] "${truncate(a.display_text, MAX_AYAH_CHARS)}"`)
     .join('\n');
 
-  return `You are QuranSays. Explain the following Quran ayah in depth.
+  return `You are QuranSays. Explain the following Quran ayah concisely (2-3 sentences).
 
-AYAH: [${ayah.reference}] "${ayah.display_text}"
+AYAH: [${ayah.reference}] "${truncate(ayah.display_text, 300)}"
 
 RELATED AYAHS (for cross-reference only):
 ${relatedText || '(none)'}
@@ -79,8 +79,8 @@ ${relatedText || '(none)'}
 Return ONLY valid JSON (no markdown fences) matching this schema:
 
 {
-  "explanation": "<detailed explanation of the ayah>",
-  "surah_context": "<brief context about this surah and where this ayah fits>",
+  "explanation": "<2-3 sentence explanation>",
+  "surah_context": "<one sentence about where this fits in the surah>",
   "related_references": ["<reference>", ...]
 }`;
 }

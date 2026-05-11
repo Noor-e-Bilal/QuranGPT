@@ -56,10 +56,10 @@ export async function GET(
   }
 
   try {
-    const chromaRows = await queryCollection(ayah.display_text, 7).catch(() => []);
+    const chromaRows = await queryCollection(ayah.display_text, 4).catch(() => []);
     const relatedRefs = chromaRows
       .filter((r) => r.reference !== ayah.reference)
-      .slice(0, 6)
+      .slice(0, 3)
       .map((r) => r.reference);
     const relatedAyahs = getAyahsByReferences(relatedRefs);
 

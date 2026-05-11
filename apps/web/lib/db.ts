@@ -43,10 +43,24 @@ export function isValidReference(chapter: number, verse: number): boolean {
   return verse >= 1 && verse <= surah.ayah_count;
 }
 
+const FTS_STOP_WORDS = new Set([
+  'the','a','an','is','it','in','of','to','and','or','for','about','what',
+  'does','say','how','why','who','when','where','which','do','did','can',
+  'will','should','would','could','has','have','had','be','been','are',
+  'was','were','this','that','with','from','by','at','as','if','but','not',
+  'no','so','we','i','you','he','she','they','our','your','my','his','her',
+  'tell','us','me','quran','allah','god','islam','muslim',
+]);
+
 export function searchFTS(query: string, limit = 20): AyahRow[] {
   try {
-    const safe = query.replace(/[^\w\s]/g, ' ').trim();
-    if (!safe) return [];
+    const tokens = query
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !FTS_STOP_WORDS.has(w));
+    if (tokens.length === 0) return [];
+    const ftsQuery = tokens.join(' OR ');
     const rows = getDb()
       .prepare(
         `SELECT a.surah, a.ayah, a.reference, a.text, a.display_text, a.tokens_count
@@ -56,7 +70,7 @@ export function searchFTS(query: string, limit = 20): AyahRow[] {
          ORDER BY f.rank
          LIMIT ?`
       )
-      .all(safe, limit);
+      .all(ftsQuery, limit);
     return toPlainArray<AyahRow>(rows);
   } catch {
     return [];
