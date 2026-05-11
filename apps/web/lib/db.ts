@@ -48,12 +48,15 @@ const FTS_STOP_WORDS = new Set([
   'does','say','how','why','who','when','where','which','do','did','can',
   'will','should','would','could','has','have','had','be','been','are',
   'was','were','this','that','with','from','by','at','as','if','but','not',
-  'no','so','we','i','you','he','she','they','our','your','my','his','her',
+  'no','so','we','i','you','you','he','she','they','our','your','my','his','her',
   'tell','us','me','quran','allah','god','islam','muslim',
   // classifier / question words that match noise
   'type','types','kind','kinds','form','forms','sort','sorts',
   'concept','meaning','definition','example','examples','explain',
-  'describe','description','list','mention','according','different',
+  'describe','description','list','mention','mentioned','according','different',
+  // quantity / count noise words
+  'much','many','time','times','number','total','often','count','how many',
+  'more','less','few','several','some','any','all','every','each',
 ]);
 
 /**
@@ -64,8 +67,8 @@ const FTS_STOP_WORDS = new Set([
 const ISLAMIC_SYNONYMS: Record<string, string[]> = {
   jihad:      ['strive','striving','struggle','fight','fighting','cause'],
   mujahid:    ['strive','struggle','fighter','cause'],
-  salah:      ['prayer','pray','worship','establish'],
-  salat:      ['prayer','pray','worship','establish'],
+  salah:      ['prayer','pray','worship','establish','morning','evening','noon','decline','sunset','dawn','dusk','midday'],
+  salat:      ['prayer','pray','worship','establish','morning','evening','noon','decline','sunset','dawn','dusk','midday'],
   zakat:      ['alms','charity','spend','donate','give'],
   sawm:       ['fast','fasting','abstain'],
   siyam:      ['fast','fasting'],

@@ -4,8 +4,8 @@ import type { EvidenceAyah, EvidenceBundle } from './types';
 
 const FTS_WEIGHT = 0.4;
 const SEMANTIC_WEIGHT = 0.6;
-const SCORE_THRESHOLD = 0.25;
-const TOP_K = 5;
+const SCORE_THRESHOLD = 0.15;
+const TOP_K = 10;
 
 export async function retrieve(query: string): Promise<EvidenceBundle> {
   const expandedQuery = expandQueryForSemantic(query);

@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { retrieve } from '@/lib/retrieval';
 import { generateChatResponse } from '@/lib/llm';
 import { buildChatResponse, fallbackChatResponse } from '@/lib/validator';
+import { chatCache, normaliseCacheKey } from '@/lib/cache';
 import type { ApiError } from '@/lib/types';
 
 // Simple in-memory rate limiter: 10 req/min per IP
@@ -65,6 +66,16 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // Check cache first — skip for clarification follow-ups (contain "[User clarified:")
+    const cacheKey = normaliseCacheKey(question);
+    const isClarification = question.includes('[User clarified:');
+    if (!isClarification) {
+      const cached = chatCache.get(cacheKey);
+      if (cached) {
+        return NextResponse.json({ ...cached, request_id: requestId, cached: true });
+      }
+    }
+
     const evidence = await retrieve(question);
     const llmOutput = await generateChatResponse(question, evidence);
 
@@ -75,6 +86,12 @@ export async function POST(req: NextRequest) {
     }
 
     const response = buildChatResponse(llmOutput, evidence, requestId);
+
+    // Cache non-clarification responses so repeated questions are instant
+    if (!isClarification && !llmOutput.needs_clarification) {
+      chatCache.set(cacheKey, response);
+    }
+
     return NextResponse.json(response);
   } catch (err) {
     console.error('[/api/chat]', err);
