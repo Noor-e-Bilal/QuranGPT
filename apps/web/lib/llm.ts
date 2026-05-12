@@ -138,7 +138,7 @@ export async function generateChatResponse(
 ): Promise<LLMChatOutput> {
   const prompt = buildChatPrompt(question, evidence, safetyValve);
   const raw = await callLLM(prompt);
-  return parseWithRepair<LLMChatOutput>(raw, {
+  const output = parseWithRepair<LLMChatOutput>(raw, {
     needs_clarification: false,
     clarifying_question: null,
     answer: 'Unable to generate a response at this time.',
@@ -147,6 +147,8 @@ export async function generateChatResponse(
     limitations: 'LLM response could not be parsed.',
     confidence: 'low',
   });
+  output._debug = { prompt_type: 'chat', prompt_sent: prompt, model: MODEL, raw_response: raw };
+  return output;
 }
 
 /**
@@ -160,7 +162,7 @@ export async function generateClarificationQuestion(
 ): Promise<LLMChatOutput> {
   const prompt = buildClarificationPrompt(question, evidence, confidence);
   const raw = await callLLM(prompt);
-  return parseWithRepair<LLMChatOutput>(raw, {
+  const output = parseWithRepair<LLMChatOutput>(raw, {
     needs_clarification: true,
     clarifying_question:
       "Could you clarify what specific aspect you'd like to explore in the Quran?",
@@ -170,6 +172,8 @@ export async function generateClarificationQuestion(
     limitations: null,
     confidence: 'low',
   });
+  output._debug = { prompt_type: 'clarification', prompt_sent: prompt, model: MODEL, raw_response: raw };
+  return output;
 }
 
 // ---------- Verse ---------------------------------------------------------

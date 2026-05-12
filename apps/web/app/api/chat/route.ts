@@ -4,7 +4,9 @@ import { retrieve } from '@/lib/retrieval';
 import { generateChatResponse, generateClarificationQuestion } from '@/lib/llm';
 import { buildChatResponse, fallbackChatResponse } from '@/lib/validator';
 import { chatCache, normaliseCacheKey } from '@/lib/cache';
-import type { ApiError } from '@/lib/types';
+import type { ApiError, DebugInfo } from '@/lib/types';
+
+const IS_DEV = process.env.NODE_ENV === 'development';
 
 // Simple in-memory rate limiter: 10 req/min per IP
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -116,8 +118,22 @@ export async function POST(req: NextRequest) {
         evidence,
         evidence.confidence
       );
+      const clarifyResponse = buildChatResponse(clarifyOutput, evidence, requestId);
+      if (IS_DEV && clarifyOutput._debug && evidence._debug) {
+        const debug: DebugInfo = {
+          timestamp: new Date().toISOString(),
+          original_question: question,
+          enriched_query: enrichedQuery,
+          clarification_round: clarificationRound,
+          safety_valve: false,
+          cache_hit: false,
+          retrieval: evidence._debug,
+          llm: clarifyOutput._debug,
+        };
+        clarifyResponse.debug = debug;
+      }
       // Clarification responses are never cached
-      return NextResponse.json(buildChatResponse(clarifyOutput, evidence, requestId));
+      return NextResponse.json(clarifyResponse);
     }
 
     // ── Answer path (HIGH confidence OR safety valve) ─────────────────────
@@ -131,9 +147,24 @@ export async function POST(req: NextRequest) {
 
     const response = buildChatResponse(llmOutput, evidence, requestId);
 
-    // Only cache HIGH-confidence answers for original questions
+    // Only cache HIGH-confidence answers for original questions (without debug info).
+    // Spread to clone so a later response.debug mutation doesn't affect the cached copy.
     if (!isClarificationTurn && evidence.confidence === 'high' && !llmOutput.needs_clarification) {
-      chatCache.set(normaliseCacheKey(question), response);
+      chatCache.set(normaliseCacheKey(question), { ...response });
+    }
+
+    if (IS_DEV && llmOutput._debug && evidence._debug) {
+      const debug: DebugInfo = {
+        timestamp: new Date().toISOString(),
+        original_question: question,
+        enriched_query: enrichedQuery,
+        clarification_round: clarificationRound,
+        safety_valve: safetyValve,
+        cache_hit: false,
+        retrieval: evidence._debug,
+        llm: llmOutput._debug,
+      };
+      response.debug = debug;
     }
 
     return NextResponse.json(response);
