@@ -49,6 +49,10 @@ SURAH_HEADER_RE = re.compile(
 
 FOOTNOTE_RE = re.compile(r'\[\d+\]')
 WHITESPACE_RE = re.compile(r'\s+')
+# Strips PDF watermark blocks: "***ebook converter DEMO Watermarks***" and trailing junk
+WATERMARK_RE = re.compile(r'\s*\*{3,}.*?(?:ebook\s+converter|DEMO\s+Watermarks).*?\*{3,}', re.IGNORECASE | re.DOTALL)
+# Catches any remaining asterisk run at end of text (e.g. "*** " suffix)
+TRAILING_STARS_RE = re.compile(r'\s*\*{3,}.*$', re.DOTALL)
 
 
 def extract_pages(pdf_path: Path) -> list[str]:
@@ -66,6 +70,8 @@ def extract_pages(pdf_path: Path) -> list[str]:
 
 def clean_text(text: str) -> str:
     text = FOOTNOTE_RE.sub("", text)
+    text = WATERMARK_RE.sub(" ", text)
+    text = TRAILING_STARS_RE.sub("", text)
     return WHITESPACE_RE.sub(" ", text).strip()
 
 

@@ -6,7 +6,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./data/chroma:/chroma/chroma
+      - ./data/chroma:/data
     environment:
       - IS_PERSISTENT=TRUE
       - ALLOW_RESET=TRUE
