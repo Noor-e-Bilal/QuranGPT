@@ -1,8 +1,12 @@
 """
 build_index.py — Populate ChromaDB with ayahs from data/quran.db.
 
-Uses ChromaDB's built-in default embedding function (ONNX all-MiniLM-L6-v2).
-Requires ChromaDB running: docker compose up -d chroma
+Uses BAAI/bge-small-en-v1.5 via sentence-transformers for high-quality
+384-dim embeddings (no instruction prefix needed for stored documents).
+
+Requires:
+  - ChromaDB running:  docker compose up -d chroma
+  - Model installed:   pip3 install sentence-transformers>=2.7.0
 
 Run from repo root:
     python3 scripts/ingest/build_index.py
@@ -20,13 +24,22 @@ try:
 except ImportError:
     sys.exit("ERROR: chromadb/tqdm not installed. Run: pip3 install chromadb tqdm")
 
+try:
+    from sentence_transformers import SentenceTransformer
+except ImportError:
+    sys.exit(
+        "ERROR: sentence-transformers not installed. "
+        "Run: pip3 install sentence-transformers>=2.7.0"
+    )
+
 ROOT = Path(__file__).resolve().parents[2]
 DB_PATH = ROOT / "data" / "quran.db"
 INDEX_META_PATH = ROOT / "data" / "index_meta.json"
 
 CHROMA_URL = os.environ.get("CHROMA_URL", "http://localhost:8000")
-COLLECTION_NAME = "quran_v1"
-BATCH_SIZE = 100
+COLLECTION_NAME = "quran_v2"
+EMBEDDING_MODEL = "BAAI/bge-small-en-v1.5"
+BATCH_SIZE = 64  # Larger batches for faster encoding
 
 
 def load_ayahs(db_path: Path) -> list[dict]:
@@ -43,15 +56,22 @@ def main() -> None:
     if not DB_PATH.exists():
         sys.exit(f"ERROR: {DB_PATH} not found. Run build_db.py first.")
 
-    print(f"Connecting to ChromaDB at {CHROMA_URL} …")
-    client = chromadb.HttpClient(host=CHROMA_URL.replace("http://", "").split(":")[0],
-                                 port=int(CHROMA_URL.split(":")[-1]))
+    print(f"Loading embedding model '{EMBEDDING_MODEL}' …")
+    model = SentenceTransformer(EMBEDDING_MODEL)
+    print(f"  Model loaded (dim={model.get_sentence_embedding_dimension()})")
 
-    # Test connection
+    print(f"Connecting to ChromaDB at {CHROMA_URL} …")
+    client = chromadb.HttpClient(
+        host=CHROMA_URL.replace("http://", "").split(":")[0],
+        port=int(CHROMA_URL.split(":")[-1]),
+    )
     try:
         client.heartbeat()
     except Exception as e:
-        sys.exit(f"ERROR: Cannot connect to ChromaDB: {e}\nIs 'docker compose up -d chroma' running?")
+        sys.exit(
+            f"ERROR: Cannot connect to ChromaDB: {e}\n"
+            "Is 'docker compose up -d chroma' running?"
+        )
 
     # Reset collection if exists
     try:
@@ -60,6 +80,7 @@ def main() -> None:
     except Exception:
         pass
 
+    # Create collection — embeddings are client-computed, so no server EF needed
     collection = client.create_collection(
         name=COLLECTION_NAME,
         metadata={"hnsw:space": "cosine"},
@@ -70,13 +91,25 @@ def main() -> None:
     ayahs = load_ayahs(DB_PATH)
     print(f"  Loaded {len(ayahs)} ayahs")
 
+    # Encode all documents (no instruction prefix for BGE stored documents)
+    print(f"Encoding {len(ayahs)} ayahs with '{EMBEDDING_MODEL}' …")
+    texts = [a["display_text"] for a in ayahs]
+    embeddings = model.encode(
+        texts,
+        normalize_embeddings=True,
+        batch_size=BATCH_SIZE,
+        show_progress_bar=True,
+    )
+
     # Insert in batches
-    print(f"Indexing {len(ayahs)} ayahs in batches of {BATCH_SIZE} …")
+    print(f"Uploading to ChromaDB in batches of {BATCH_SIZE} …")
     for i in tqdm(range(0, len(ayahs), BATCH_SIZE)):
         batch = ayahs[i : i + BATCH_SIZE]
+        batch_embeds = embeddings[i : i + BATCH_SIZE]
         collection.add(
             ids=[a["reference"] for a in batch],
             documents=[a["display_text"] for a in batch],
+            embeddings=batch_embeds.tolist(),
             metadatas=[
                 {
                     "surah": a["surah"],
@@ -87,14 +120,15 @@ def main() -> None:
             ],
         )
 
-    # Write metadata
     meta = {
         "collection": COLLECTION_NAME,
+        "embedding_model": EMBEDDING_MODEL,
         "ayah_count": len(ayahs),
         "chroma_url": CHROMA_URL,
     }
     INDEX_META_PATH.write_text(json.dumps(meta, indent=2))
-    print(f"\n✓ Indexed {len(ayahs)} ayahs into ChromaDB collection '{COLLECTION_NAME}'")
+    print(f"\n✓ Indexed {len(ayahs)} ayahs into '{COLLECTION_NAME}'")
+    print(f"  Model: {EMBEDDING_MODEL}")
     print(f"  Metadata saved to {INDEX_META_PATH}")
 
 

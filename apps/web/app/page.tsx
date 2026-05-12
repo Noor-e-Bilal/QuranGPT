@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import type { ChatResponse, ApiError } from '@/lib/types';
+import DebugPanel from './components/DebugPanel';
 
 interface Message {
   id: string;
@@ -15,6 +16,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [debugMsgId, setDebugMsgId] = useState<string | null>(null);
   // Track when the user is answering a clarification request
   const [pendingClarification, setPendingClarification] = useState<{ originalQuestion: string } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -164,6 +166,30 @@ export default function ChatPage() {
                   {msg.data.limitations && (
                     <span className="text-[10px] text-amber-400">⚠ {msg.data.limitations}</span>
                   )}
+                  {msg.data.debug && (
+                    <button
+                      onClick={() => setDebugMsgId(debugMsgId === msg.id ? null : msg.id)}
+                      title="Open debug panel"
+                      className="ml-auto text-[11px] text-slate-500 hover:text-emerald-400 transition-colors"
+                      aria-label="Debug info"
+                    >
+                      🔬
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Debug button for clarification messages */}
+              {msg.isClarification && msg.data?.debug && (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={() => setDebugMsgId(debugMsgId === msg.id ? null : msg.id)}
+                    title="Open debug panel"
+                    className="text-[11px] text-slate-500 hover:text-emerald-400 transition-colors"
+                    aria-label="Debug info"
+                  >
+                    🔬
+                  </button>
                 </div>
               )}
             </div>
@@ -213,6 +239,14 @@ export default function ChatPage() {
           Send
         </button>
       </div>
+
+      {/* Debug panel — rendered outside message list to avoid z-index issues */}
+      {debugMsgId && (() => {
+        const msg = messages.find((m) => m.id === debugMsgId);
+        return msg?.data?.debug ? (
+          <DebugPanel debug={msg.data.debug} onClose={() => setDebugMsgId(null)} />
+        ) : null;
+      })()}
     </div>
   );
 }

@@ -45,21 +45,37 @@ jest.mock('@/lib/db', () => ({
     },
   ]),
   checkDbHealth: jest.fn(() => true),
+  expandQueryForSemantic: jest.fn((q: string) => q),
 }));
 
 jest.mock('@/lib/chroma', () => ({
-  queryCollection: jest.fn(() => Promise.resolve([])),
+  queryCollection: jest.fn(() => Promise.resolve([
+    { reference: '1:1', distance: 0.05 }, // low distance → HIGH confidence
+  ])),
   checkChromaHealth: jest.fn(() => Promise.resolve(true)),
 }));
 
 jest.mock('@/lib/llm', () => ({
   generateChatResponse: jest.fn(() =>
     Promise.resolve({
+      needs_clarification: false,
+      clarifying_question: null,
       answer: 'In the name of Allah, the Entirely Merciful, the Especially Merciful.',
       summary: 'Bismillah',
       citations: [{ reference: '1:1', quote: 'In the name of Allah, the Entirely Merciful, the Especially Merciful.' }],
       limitations: null,
       confidence: 'high',
+    })
+  ),
+  generateClarificationQuestion: jest.fn(() =>
+    Promise.resolve({
+      needs_clarification: true,
+      clarifying_question: 'Could you clarify what aspect you mean?',
+      answer: '',
+      summary: '',
+      citations: [],
+      limitations: null,
+      confidence: 'low',
     })
   ),
   generateVerseExplanation: jest.fn(() =>
