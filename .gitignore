@@ -35,3 +35,13 @@ data/*.db
 .DS_Store
 *.swp
 *.swo
+
+# SQLite temp files
+*.db-shm
+*.db-wal
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# RTK local config
+.rtk/
