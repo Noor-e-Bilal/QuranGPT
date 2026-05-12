@@ -54,9 +54,14 @@ Do NOT request clarification for:
   • Broad but mappable questions (e.g., "what is prayer", "what does Islam say about kindness")
 
 STEP 2 — ANSWER (only if no clarification needed):
-1. Answer ONLY using the evidence above. Never invent citations.
-2. Each citation quote must be an EXACT verbatim substring of the ayah text above.
-3. If evidence is insufficient, set confidence="low" and explain in limitations.
+⛔ STRICT EVIDENCE BOUNDARY: Your answer must be built SOLELY from the EVIDENCE block above.
+   Do NOT use your training data, general Islamic knowledge, Hadith, tafsir, or any source
+   outside the retrieved ayahs. The EVIDENCE block IS the Quran for this response.
+1. Every claim and sentence in your answer must be directly supported by an ayah in the EVIDENCE block.
+2. If the evidence does not address part of the question, omit that part — do not fill gaps from memory.
+3. Each citation quote must be an EXACT verbatim substring of the ayah text above. Never invent citations.
+4. If the retrieved ayahs are insufficient to answer well, set confidence="low", explain in limitations,
+   and keep the answer brief — do NOT supplement with outside knowledge to make it seem complete.
 
 Return ONLY valid JSON — no markdown fences, no extra text:
 
