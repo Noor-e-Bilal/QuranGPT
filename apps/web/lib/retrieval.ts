@@ -1,11 +1,23 @@
 import { searchFTS, getAyahsByReferences, expandQueryForSemantic } from './db';
 import { queryCollection } from './chroma';
-import type { EvidenceAyah, EvidenceBundle } from './types';
+import type { EvidenceAyah, EvidenceBundle, RetrievalConfidence } from './types';
 
 const FTS_WEIGHT = 0.4;
 const SEMANTIC_WEIGHT = 0.6;
-const SCORE_THRESHOLD = 0.15;
+const SCORE_THRESHOLD = 0.15;   // Minimum score to include a hit
 const TOP_K = 10;
+
+// Tiered confidence thresholds (calibrated for BGE cosine similarity scores)
+const HIGH_SCORE = 0.50;   // Strong evidence: direct semantic match
+const MEDIUM_SCORE = 0.30; // Partial evidence: related but not precise
+
+function classifyConfidence(ayahs: EvidenceAyah[]): RetrievalConfidence {
+  if (ayahs.length === 0) return 'none';
+  const topScore = ayahs[0].score; // sorted descending
+  if (topScore >= HIGH_SCORE) return 'high';
+  if (topScore >= MEDIUM_SCORE) return 'medium';
+  return 'low';
+}
 
 export async function retrieve(query: string): Promise<EvidenceBundle> {
   const expandedQuery = expandQueryForSemantic(query);
@@ -44,7 +56,7 @@ export async function retrieve(query: string): Promise<EvidenceBundle> {
     .slice(0, TOP_K);
 
   if (ranked.length === 0) {
-    return { ayahs: [], hitCount: 0 };
+    return { ayahs: [], hitCount: 0, confidence: 'none' };
   }
 
   const refs = ranked.map((r) => r.reference);
@@ -59,5 +71,5 @@ export async function retrieve(query: string): Promise<EvidenceBundle> {
     })
     .filter((a): a is EvidenceAyah => a !== null);
 
-  return { ayahs, hitCount: ayahs.length };
+  return { ayahs, hitCount: ayahs.length, confidence: classifyConfidence(ayahs) };
 }

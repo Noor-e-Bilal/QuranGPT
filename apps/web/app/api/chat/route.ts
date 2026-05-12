@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { retrieve } from '@/lib/retrieval';
-import { generateChatResponse } from '@/lib/llm';
+import { generateChatResponse, generateClarificationQuestion } from '@/lib/llm';
 import { buildChatResponse, fallbackChatResponse } from '@/lib/validator';
 import { chatCache, normaliseCacheKey } from '@/lib/cache';
 import type { ApiError } from '@/lib/types';
@@ -10,6 +10,8 @@ import type { ApiError } from '@/lib/types';
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 10;
 const WINDOW_MS = 60_000;
+// After this many clarification rounds, activate safety valve (present best answer)
+const MAX_CLARIFICATION_ROUNDS = 3;
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
@@ -21,6 +23,27 @@ function checkRateLimit(ip: string): boolean {
   if (entry.count >= RATE_LIMIT) return false;
   entry.count++;
   return true;
+}
+
+/**
+ * Count how many "[User clarified:" markers are in the question string.
+ * Each marker represents one completed clarification round.
+ */
+function parseClarificationRound(question: string): number {
+  return (question.match(/\[User clarified:/g) ?? []).length;
+}
+
+/**
+ * Build an enriched query by stripping the "[User clarified: ...]" markers
+ * and combining core question + clarification text into one search string.
+ * This gives retrieval a richer signal after multiple turns.
+ */
+function buildEnrichedQuery(question: string): string {
+  return question
+    .replace(/\[User clarified:\s*/g, ' ')
+    .replace(/\]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export async function POST(req: NextRequest) {
@@ -66,30 +89,51 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // Check cache first — skip for clarification follow-ups (contain "[User clarified:")
-    const cacheKey = normaliseCacheKey(question);
-    const isClarification = question.includes('[User clarified:');
-    if (!isClarification) {
-      const cached = chatCache.get(cacheKey);
+    const clarificationRound = parseClarificationRound(question);
+    const isClarificationTurn = clarificationRound > 0;
+
+    // Cache: only for original (non-clarification) questions
+    if (!isClarificationTurn) {
+      const cached = chatCache.get(normaliseCacheKey(question));
       if (cached) {
         return NextResponse.json({ ...cached, request_id: requestId, cached: true });
       }
     }
 
-    const evidence = await retrieve(question);
-    const llmOutput = await generateChatResponse(question, evidence);
+    // Use enriched query (strips markers, combines context) for better retrieval
+    const enrichedQuery = buildEnrichedQuery(question);
+    const evidence = await retrieve(enrichedQuery);
 
-    // If retrieval found nothing and the LLM isn't asking for clarification,
-    // return a safe fallback to prevent ungrounded answers.
+    // ── Confidence gating ────────────────────────────────────────────────
+    // Safety valve: after MAX_CLARIFICATION_ROUNDS, answer with whatever we have
+    const safetyValve =
+      clarificationRound >= MAX_CLARIFICATION_ROUNDS && evidence.confidence !== 'high';
+
+    if (evidence.confidence !== 'high' && !safetyValve) {
+      // Not enough evidence yet — ask a targeted clarification question
+      const clarifyOutput = await generateClarificationQuestion(
+        question,
+        evidence,
+        evidence.confidence
+      );
+      // Clarification responses are never cached
+      return NextResponse.json(buildChatResponse(clarifyOutput, evidence, requestId));
+    }
+
+    // ── Answer path (HIGH confidence OR safety valve) ─────────────────────
+    const llmOutput = await generateChatResponse(question, evidence, safetyValve);
+
+    // Guard: if retrieval found nothing and LLM isn't requesting clarification,
+    // return safe fallback to prevent ungrounded answers.
     if (evidence.hitCount === 0 && !llmOutput.needs_clarification) {
       return NextResponse.json(fallbackChatResponse(requestId));
     }
 
     const response = buildChatResponse(llmOutput, evidence, requestId);
 
-    // Cache non-clarification responses so repeated questions are instant
-    if (!isClarification && !llmOutput.needs_clarification) {
-      chatCache.set(cacheKey, response);
+    // Only cache HIGH-confidence answers for original questions
+    if (!isClarificationTurn && evidence.confidence === 'high' && !llmOutput.needs_clarification) {
+      chatCache.set(normaliseCacheKey(question), response);
     }
 
     return NextResponse.json(response);

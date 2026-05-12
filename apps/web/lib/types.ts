@@ -19,9 +19,12 @@ export interface EvidenceAyah extends AyahRow {
   score: number;
 }
 
+export type RetrievalConfidence = 'high' | 'medium' | 'low' | 'none';
+
 export interface EvidenceBundle {
   ayahs: EvidenceAyah[];
   hitCount: number;
+  confidence: RetrievalConfidence;
 }
 
 export interface Citation {
