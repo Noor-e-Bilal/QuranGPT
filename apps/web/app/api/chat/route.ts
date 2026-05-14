@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { retrieve, retrieveComparison } from '@/lib/retrieval';
+import { retrieve } from '@/lib/retrieval';
 import { generateChatResponse, generateClarificationQuestion } from '@/lib/llm';
 import { buildChatResponse, fallbackChatResponse } from '@/lib/validator';
 import { chatCache, normaliseCacheKey } from '@/lib/cache';
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(err, { status: 429 });
   }
 
-  let body: { question?: unknown; providerSettings?: unknown; compare?: unknown; reformulated_query?: unknown };
+  let body: { question?: unknown; providerSettings?: unknown; reformulated_query?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -101,7 +101,6 @@ export async function POST(req: NextRequest) {
     ? body.providerSettings
     : undefined;
 
-  const compareMode = body.compare === true;
 
   try {
     const clarificationRound = parseClarificationRound(question);
@@ -165,15 +164,6 @@ export async function POST(req: NextRequest) {
     // Attach reformulated query so UI can show "searched for: ..."
     if (reformulatedQuery) {
       response.reformulated_query = reformulatedQuery;
-    }
-
-    // Compare mode: run both pipelines and attach results
-    if (compareMode) {
-      try {
-        response._comparison = await retrieveComparison(retrievalQuery);
-      } catch (err) {
-        console.error('[/api/chat] comparison error (non-fatal):', err);
-      }
     }
 
     if (!isClarificationTurn && evidence.confidence === 'high' && !llmOutput.needs_clarification) {

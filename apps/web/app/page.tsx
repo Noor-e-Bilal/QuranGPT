@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import type { ChatResponse, ApiError, ProviderSettings } from '@/lib/types';
+import type { ChatResponse, ApiError, ProviderSettings, ComparisonBundle } from '@/lib/types';
 import { PROVIDER_MODELS, DEFAULT_PROVIDER_SETTINGS } from '@/lib/types';
 import DebugPanel from './components/DebugPanel';
 import ComparisonPanel from './components/ComparisonPanel';
@@ -12,6 +12,9 @@ interface Message {
   content: string;
   data?: ChatResponse;
   isClarification?: boolean;
+  /** Populated asynchronously after the answer arrives when compare mode is on. */
+  _comparison?: ComparisonBundle;
+  comparisonLoading?: boolean;
 }
 
 type LoadingPhase = 'idle' | 'thinking' | 'searching' | 'generating';
@@ -114,7 +117,6 @@ export default function ChatPage() {
           question: apiQuestion,
           reformulated_query: reformulatedQuery,
           providerSettings,
-          compare: compareMode,
         }),
       });
       const json = await res.json();
@@ -142,10 +144,46 @@ export default function ChatPage() {
             },
           ]);
         } else {
+          const msgId = crypto.randomUUID();
+          // Add the answer, marking comparison as loading if compare mode is on
           setMessages((m) => [
             ...m,
-            { id: crypto.randomUUID(), role: 'assistant', content: data.answer, data },
+            {
+              id: msgId,
+              role: 'assistant',
+              content: data.answer,
+              data,
+              comparisonLoading: compareMode,
+            },
           ]);
+
+          // Fire comparison fetch asynchronously — does not block the answer render
+          if (compareMode) {
+            const comparisonQuery = reformulatedQuery ?? apiQuestion;
+            fetch('/api/compare', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ query: comparisonQuery }),
+            })
+              .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
+              .then((bundle: ComparisonBundle) => {
+                setMessages((m) =>
+                  m.map((msg) =>
+                    msg.id === msgId
+                      ? { ...msg, _comparison: bundle, comparisonLoading: false }
+                      : msg
+                  )
+                );
+              })
+              .catch(() => {
+                // Silently clear loading state on failure
+                setMessages((m) =>
+                  m.map((msg) =>
+                    msg.id === msgId ? { ...msg, comparisonLoading: false } : msg
+                  )
+                );
+              });
+          }
         }
       }
     } catch {
@@ -232,14 +270,21 @@ export default function ChatPage() {
                     <span className="text-[10px] text-amber-400">⚠ {msg.data.limitations}</span>
                   )}
                   <div className="ml-auto flex items-center gap-2">
-                    {msg.data._comparison && (
+                    {msg.comparisonLoading && (
+                      <span className="text-[10px] text-sky-400 animate-pulse">⚖️ Comparing…</span>
+                    )}
+                    {!msg.comparisonLoading && msg._comparison && (
                       <button
                         onClick={() => setCompareMsgId(compareMsgId === msg.id ? null : msg.id)}
                         title="Toggle pipeline comparison"
-                        className="text-[11px] text-slate-500 hover:text-sky-400 transition-colors"
+                        className={`text-[11px] transition-colors ${
+                          compareMsgId === msg.id
+                            ? 'text-sky-400'
+                            : 'text-slate-500 hover:text-sky-400'
+                        }`}
                         aria-label="Pipeline comparison"
                       >
-                        ⚖️
+                        ⚖️ Compare
                       </button>
                     )}
                     {msg.data.debug && (
@@ -276,9 +321,9 @@ export default function ChatPage() {
         {/* Inline comparison panel below the relevant message */}
         {compareMsgId && (() => {
           const msg = messages.find((m) => m.id === compareMsgId);
-          return msg?.data?._comparison ? (
+          return msg?._comparison ? (
             <ComparisonPanel
-              comparison={msg.data._comparison}
+              comparison={msg._comparison}
               onClose={() => setCompareMsgId(null)}
             />
           ) : null;
