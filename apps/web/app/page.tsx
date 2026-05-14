@@ -233,6 +233,7 @@ export default function ChatPage() {
                   right={msg.compareRight ?? null}
                   rightLoading={msg.compareRightLoading ?? false}
                   rightError={msg.compareRightError}
+                  onDebug={msg.data.debug ? () => setDebugMsgId(msg.id) : undefined}
                 />
               </div>
             ) : (

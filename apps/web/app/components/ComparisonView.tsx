@@ -34,11 +34,13 @@ function AnswerPanel({
   accent,
   loading,
   error,
+  onDebug,
 }: {
   data?: PanelData;
   accent: 'emerald' | 'sky';
   loading?: boolean;
   error?: string;
+  onDebug?: () => void;
 }) {
   const headerBorder = accent === 'emerald' ? 'border-emerald-700/40' : 'border-sky-700/40';
   const headerBg = accent === 'emerald' ? 'bg-emerald-900/20' : 'bg-sky-900/20';
@@ -58,6 +60,16 @@ function AnswerPanel({
           <span className="text-[10px] font-mono text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">
             {data.formula}
           </span>
+        )}
+        {onDebug && (
+          <button
+            onClick={onDebug}
+            title="Open debug panel"
+            className="ml-auto text-[11px] text-slate-500 hover:text-emerald-400 transition-colors"
+            aria-label="Debug info"
+          >
+            🔬
+          </button>
         )}
       </div>
 
@@ -139,9 +151,11 @@ interface Props {
   right: ComparePanelResult | null;
   rightLoading: boolean;
   rightError?: string;
+  /** Called when the 🔬 debug icon is clicked on either panel. */
+  onDebug?: () => void;
 }
 
-export default function ComparisonView({ left, leftReformulatedQuery, right, rightLoading, rightError }: Props) {
+export default function ComparisonView({ left, leftReformulatedQuery, right, rightLoading, rightError, onDebug }: Props) {
   const leftData: PanelData = {
     label: 'Current',
     formula: 'BGE-small · FTS×0.4 + Sem×0.6',
@@ -167,12 +181,13 @@ export default function ComparisonView({ left, leftReformulatedQuery, right, rig
 
       {/* Side-by-side panels */}
       <div className="flex gap-3 items-start">
-        <AnswerPanel data={leftData} accent="emerald" />
+        <AnswerPanel data={leftData} accent="emerald" onDebug={onDebug} />
         <AnswerPanel
           data={right ?? undefined}
           accent="sky"
           loading={rightLoading}
           error={rightError}
+          onDebug={onDebug}
         />
       </div>
     </div>
