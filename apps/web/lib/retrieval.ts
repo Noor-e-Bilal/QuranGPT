@@ -6,8 +6,6 @@ import type {
   RetrievalConfidence,
   RetrievalDebugScore,
   RRFScoreRow,
-  ComparisonBundle,
-  ComparisonPipelineResult,
 } from './types';
 
 const FTS_WEIGHT = 0.4;
@@ -179,47 +177,5 @@ export async function retrieveRRF(query: string): Promise<{
   return {
     bundle: { ayahs, hitCount: ayahs.length, confidence },
     rrfScores: ranked,
-  };
-}
-
-/**
- * Runs both pipelines in parallel and returns a ComparisonBundle for the
- * side-by-side comparison UI.
- */
-export async function retrieveComparison(
-  query: string,
-): Promise<ComparisonBundle> {
-  const [currentResult, rrfResult] = await Promise.all([
-    retrieve(query),
-    retrieveRRF(query),
-  ]);
-
-  const currentScores: RetrievalDebugScore[] =
-    currentResult._debug?.scores ?? [];
-
-  const current: ComparisonPipelineResult = {
-    label: 'Current: BGE-small (384-dim) + Linear Blend',
-    formula: 'FTS × 0.4 + Semantic × 0.6',
-    confidence: currentResult.confidence,
-    ayahs: currentResult.ayahs,
-    scores: currentScores,
-  };
-
-  const candidate: ComparisonPipelineResult = {
-    label: 'Proposed: BGE-base (768-dim) + RRF (k=60)',
-    formula: 'RRF = Σ 1/(60 + rank_i)  •  model: ' + BASE_EMBEDDING_MODEL,
-    confidence: rrfResult.bundle.confidence,
-    ayahs: rrfResult.bundle.ayahs,
-    scores: rrfResult.rrfScores,
-  };
-
-  return {
-    query,
-    current,
-    candidate,
-    note:
-      'Current pipeline uses quran_v2 (BGE-small, 384-dim). ' +
-      'Proposed pipeline uses base_quran_v2 (BGE-base, 768-dim). ' +
-      'Build the base index with: python3 scripts/ingest/build_index_base.py',
   };
 }

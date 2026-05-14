@@ -77,8 +77,6 @@ export interface ChatResponse {
   request_id: string;
   /** Original question reformulated for retrieval (shown in UI). */
   reformulated_query?: string;
-  /** Comparison bundle — only when compare mode is requested. */
-  _comparison?: ComparisonBundle;
   /** Present only in development mode. */
   debug?: DebugInfo;
 }
@@ -184,4 +182,22 @@ export interface ComparisonBundle {
   candidate: ComparisonPipelineResult;
   /** Surfaced in the UI to explain model-upgrade limitations. */
   note: string;
+}
+
+/**
+ * A full LLM-generated answer produced by one retrieval pipeline.
+ * Returned by /api/compare — one per pipeline (current vs upgrade).
+ */
+export interface ComparePanelResult {
+  /** Human-readable pipeline name, e.g. "Current" or "Upgrade" */
+  label: string;
+  /** Formula description, e.g. "BGE-small · FTS×0.4 + Semantic×0.6" */
+  formula: string;
+  answer: string;
+  summary: string;
+  citations: Citation[];
+  limitations: string | null;
+  confidence: RetrievalConfidence;
+  source_policy: string;
+  reformulated_query?: string;
 }

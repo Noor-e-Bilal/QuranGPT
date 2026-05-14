@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import type { ChatResponse, ApiError, ProviderSettings, ComparisonBundle } from '@/lib/types';
+import type { ChatResponse, ApiError, ProviderSettings, ComparePanelResult } from '@/lib/types';
 import { PROVIDER_MODELS, DEFAULT_PROVIDER_SETTINGS } from '@/lib/types';
 import DebugPanel from './components/DebugPanel';
-import ComparisonPanel from './components/ComparisonPanel';
+import ComparisonView from './components/ComparisonView';
 
 interface Message {
   id: string;
@@ -12,9 +12,12 @@ interface Message {
   content: string;
   data?: ChatResponse;
   isClarification?: boolean;
-  /** Populated asynchronously after the answer arrives when compare mode is on. */
-  _comparison?: ComparisonBundle;
-  comparisonLoading?: boolean;
+  /** Set when compare mode is ON — the left panel is data, the right panel loads async. */
+  isComparison?: boolean;
+  reformulatedQuery?: string;
+  compareRight?: ComparePanelResult;
+  compareRightLoading?: boolean;
+  compareRightError?: string;
 }
 
 type LoadingPhase = 'idle' | 'thinking' | 'searching' | 'generating';
@@ -37,7 +40,6 @@ export default function ChatPage() {
   const [loadingPhase, setLoadingPhase] = useState<LoadingPhase>('idle');
   const [reformulatedDisplay, setReformulatedDisplay] = useState<string | null>(null);
   const [debugMsgId, setDebugMsgId] = useState<string | null>(null);
-  const [compareMsgId, setCompareMsgId] = useState<string | null>(null);
   const [pendingClarification, setPendingClarification] = useState<{ originalQuestion: string } | null>(null);
 
   // Provider settings state
@@ -145,44 +147,55 @@ export default function ChatPage() {
           ]);
         } else {
           const msgId = crypto.randomUUID();
-          // Add the answer, marking comparison as loading if compare mode is on
-          setMessages((m) => [
-            ...m,
-            {
-              id: msgId,
-              role: 'assistant',
-              content: data.answer,
-              data,
-              comparisonLoading: compareMode,
-            },
-          ]);
 
-          // Fire comparison fetch asynchronously — does not block the answer render
           if (compareMode) {
-            const comparisonQuery = reformulatedQuery ?? apiQuestion;
+            // Compare mode: show left panel immediately, load right panel async
+            setMessages((m) => [
+              ...m,
+              {
+                id: msgId,
+                role: 'assistant',
+                content: data.answer,
+                data,
+                isComparison: true,
+                reformulatedQuery: reformulatedQuery ?? undefined,
+                compareRightLoading: true,
+              },
+            ]);
+
             fetch('/api/compare', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ query: comparisonQuery }),
+              body: JSON.stringify({
+                question: apiQuestion,
+                reformulated_query: reformulatedQuery,
+                providerSettings,
+              }),
             })
               .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
-              .then((bundle: ComparisonBundle) => {
+              .then((panel: ComparePanelResult) => {
                 setMessages((m) =>
                   m.map((msg) =>
                     msg.id === msgId
-                      ? { ...msg, _comparison: bundle, comparisonLoading: false }
+                      ? { ...msg, compareRight: panel, compareRightLoading: false }
                       : msg
                   )
                 );
               })
               .catch(() => {
-                // Silently clear loading state on failure
                 setMessages((m) =>
                   m.map((msg) =>
-                    msg.id === msgId ? { ...msg, comparisonLoading: false } : msg
+                    msg.id === msgId
+                      ? { ...msg, compareRightLoading: false, compareRightError: 'Upgrade pipeline failed — try again.' }
+                      : msg
                   )
                 );
               });
+          } else {
+            setMessages((m) => [
+              ...m,
+              { id: msgId, role: 'assistant', content: data.answer, data },
+            ]);
           }
         }
       }
@@ -209,125 +222,111 @@ export default function ChatPage() {
         {messages.map((msg) => (
           <div
             key={msg.id}
-            className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex ${msg.role === 'user' ? 'justify-end' : msg.isComparison ? 'w-full' : 'justify-start'}`}
           >
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
-                msg.role === 'user'
-                  ? 'bg-emerald-600 text-white'
-                  : msg.isClarification
-                  ? 'bg-amber-900/40 border border-amber-600/50 text-slate-100'
-                  : 'bg-slate-800 text-slate-100'
-              }`}
-            >
-              {msg.isClarification && (
-                <p className="text-[10px] font-semibold text-amber-400 mb-1 uppercase tracking-wide">
-                  🤔 Need a bit more info
-                </p>
-              )}
+            {/* ── Comparison view (side-by-side) ── */}
+            {msg.isComparison && msg.data ? (
+              <div className="w-full">
+                <ComparisonView
+                  left={msg.data}
+                  leftReformulatedQuery={msg.reformulatedQuery ?? msg.data.reformulated_query}
+                  right={msg.compareRight ?? null}
+                  rightLoading={msg.compareRightLoading ?? false}
+                  rightError={msg.compareRightError}
+                />
+              </div>
+            ) : (
+              /* ── Regular chat bubble ── */
+              <div
+                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                  msg.role === 'user'
+                    ? 'bg-emerald-600 text-white'
+                    : msg.isClarification
+                    ? 'bg-amber-900/40 border border-amber-600/50 text-slate-100'
+                    : 'bg-slate-800 text-slate-100'
+                }`}
+              >
+                {msg.isClarification && (
+                  <p className="text-[10px] font-semibold text-amber-400 mb-1 uppercase tracking-wide">
+                    🤔 Need a bit more info
+                  </p>
+                )}
 
-              {/* Reformulated query indicator (for assistant messages) */}
-              {msg.data?.reformulated_query && !msg.isClarification && (
-                <p className="text-[10px] text-slate-500 mb-2 italic">
-                  🔍 Searched for: &ldquo;{msg.data.reformulated_query}&rdquo;
-                </p>
-              )}
+                {/* Reformulated query indicator (for assistant messages) */}
+                {msg.data?.reformulated_query && !msg.isClarification && (
+                  <p className="text-[10px] text-slate-500 mb-2 italic">
+                    🔍 Searched for: &ldquo;{msg.data.reformulated_query}&rdquo;
+                  </p>
+                )}
 
-              <p className="whitespace-pre-wrap">{msg.content}</p>
+                <p className="whitespace-pre-wrap">{msg.content}</p>
 
-              {/* Citations */}
-              {msg.data && !msg.isClarification && msg.data.citations.length > 0 && (
-                <div className="mt-3 border-t border-slate-600 pt-2 flex flex-col gap-2">
-                  {msg.data.citations.map((c, i) => (
-                    <a
-                      key={i}
-                      href={`/${c.surah}/${c.ayah}`}
-                      className="block bg-emerald-900/60 border border-emerald-700 rounded-lg px-3 py-2 hover:bg-emerald-800 transition-colors"
-                    >
-                      <span className="text-xs font-semibold text-emerald-300">{c.reference}</span>
-                      <p className="text-xs text-slate-300 mt-1 italic">&ldquo;{c.quote}&rdquo;</p>
-                    </a>
-                  ))}
-                </div>
-              )}
-
-              {/* Metadata */}
-              {msg.data && !msg.isClarification && (
-                <div className="mt-2 flex items-center gap-2 flex-wrap">
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                      msg.data.confidence === 'high'
-                        ? 'bg-green-700/50 text-green-300'
-                        : msg.data.confidence === 'medium'
-                        ? 'bg-yellow-700/50 text-yellow-300'
-                        : 'bg-red-700/50 text-red-300'
-                    }`}
-                  >
-                    {msg.data.confidence}
-                  </span>
-                  <span className="text-[10px] text-slate-500">{msg.data.source_policy}</span>
-                  {msg.data.limitations && (
-                    <span className="text-[10px] text-amber-400">⚠ {msg.data.limitations}</span>
-                  )}
-                  <div className="ml-auto flex items-center gap-2">
-                    {msg.comparisonLoading && (
-                      <span className="text-[10px] text-sky-400 animate-pulse">⚖️ Comparing…</span>
-                    )}
-                    {!msg.comparisonLoading && msg._comparison && (
-                      <button
-                        onClick={() => setCompareMsgId(compareMsgId === msg.id ? null : msg.id)}
-                        title="Toggle pipeline comparison"
-                        className={`text-[11px] transition-colors ${
-                          compareMsgId === msg.id
-                            ? 'text-sky-400'
-                            : 'text-slate-500 hover:text-sky-400'
-                        }`}
-                        aria-label="Pipeline comparison"
+                {/* Citations */}
+                {msg.data && !msg.isClarification && msg.data.citations.length > 0 && (
+                  <div className="mt-3 border-t border-slate-600 pt-2 flex flex-col gap-2">
+                    {msg.data.citations.map((c, i) => (
+                      <a
+                        key={i}
+                        href={`/${c.surah}/${c.ayah}`}
+                        className="block bg-emerald-900/60 border border-emerald-700 rounded-lg px-3 py-2 hover:bg-emerald-800 transition-colors"
                       >
-                        ⚖️ Compare
-                      </button>
+                        <span className="text-xs font-semibold text-emerald-300">{c.reference}</span>
+                        <p className="text-xs text-slate-300 mt-1 italic">&ldquo;{c.quote}&rdquo;</p>
+                      </a>
+                    ))}
+                  </div>
+                )}
+
+                {/* Metadata */}
+                {msg.data && !msg.isClarification && (
+                  <div className="mt-2 flex items-center gap-2 flex-wrap">
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                        msg.data.confidence === 'high'
+                          ? 'bg-green-700/50 text-green-300'
+                          : msg.data.confidence === 'medium'
+                          ? 'bg-yellow-700/50 text-yellow-300'
+                          : 'bg-red-700/50 text-red-300'
+                      }`}
+                    >
+                      {msg.data.confidence}
+                    </span>
+                    <span className="text-[10px] text-slate-500">{msg.data.source_policy}</span>
+                    {msg.data.limitations && (
+                      <span className="text-[10px] text-amber-400">⚠ {msg.data.limitations}</span>
                     )}
                     {msg.data.debug && (
-                      <button
-                        onClick={() => setDebugMsgId(debugMsgId === msg.id ? null : msg.id)}
-                        title="Open debug panel"
-                        className="text-[11px] text-slate-500 hover:text-emerald-400 transition-colors"
-                        aria-label="Debug info"
-                      >
-                        🔬
-                      </button>
+                      <div className="ml-auto">
+                        <button
+                          onClick={() => setDebugMsgId(debugMsgId === msg.id ? null : msg.id)}
+                          title="Open debug panel"
+                          className="text-[11px] text-slate-500 hover:text-emerald-400 transition-colors"
+                          aria-label="Debug info"
+                        >
+                          🔬
+                        </button>
+                      </div>
                     )}
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Debug button for clarification messages */}
-              {msg.isClarification && msg.data?.debug && (
-                <div className="mt-2 flex justify-end">
-                  <button
-                    onClick={() => setDebugMsgId(debugMsgId === msg.id ? null : msg.id)}
-                    title="Open debug panel"
-                    className="text-[11px] text-slate-500 hover:text-emerald-400 transition-colors"
-                    aria-label="Debug info"
-                  >
-                    🔬
-                  </button>
-                </div>
-              )}
-            </div>
+                {/* Debug button for clarification messages */}
+                {msg.isClarification && msg.data?.debug && (
+                  <div className="mt-2 flex justify-end">
+                    <button
+                      onClick={() => setDebugMsgId(debugMsgId === msg.id ? null : msg.id)}
+                      title="Open debug panel"
+                      className="text-[11px] text-slate-500 hover:text-emerald-400 transition-colors"
+                      aria-label="Debug info"
+                    >
+                      🔬
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))}
-
-        {/* Inline comparison panel below the relevant message */}
-        {compareMsgId && (() => {
-          const msg = messages.find((m) => m.id === compareMsgId);
-          return msg?._comparison ? (
-            <ComparisonPanel
-              comparison={msg._comparison}
-              onClose={() => setCompareMsgId(null)}
-            />
-          ) : null;
-        })()}
 
         {/* Multi-phase loading indicator */}
         {loading && (
