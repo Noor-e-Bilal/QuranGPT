@@ -486,7 +486,11 @@ export default function ChatPage() {
       {debugMsgId && (() => {
         const msg = messages.find((m) => m.id === debugMsgId);
         return msg?.data?.debug ? (
-          <DebugPanel debug={msg.data.debug} onClose={() => setDebugMsgId(null)} />
+          <DebugPanel
+            debug={msg.data.debug}
+            upgradeDebug={msg.compareRight?.debug}
+            onClose={() => setDebugMsgId(null)}
+          />
         ) : null;
       })()}
     </div>

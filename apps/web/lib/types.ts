@@ -185,6 +185,27 @@ export interface ComparisonBundle {
 }
 
 /**
+ * Retrieval debug info for the upgrade pipeline (BGE-base + RRF).
+ * Mirrors RetrievalDebug but uses RRFScoreRow[] instead of RetrievalDebugScore[].
+ */
+export interface UpgradeRetrievalDebug {
+  query_used: string;
+  embedding_model: string;
+  fts_hits: number;
+  semantic_hits: number;
+  confidence: RetrievalConfidence;
+  rrf_scores: RRFScoreRow[];
+}
+
+/**
+ * Debug payload attached to ComparePanelResult in dev mode.
+ */
+export interface UpgradeDebugInfo {
+  retrieval: UpgradeRetrievalDebug;
+  llm: LLMCallDebug;
+}
+
+/**
  * A full LLM-generated answer produced by one retrieval pipeline.
  * Returned by /api/compare — one per pipeline (current vs upgrade).
  */
@@ -200,4 +221,6 @@ export interface ComparePanelResult {
   confidence: RetrievalConfidence;
   source_policy: string;
   reformulated_query?: string;
+  /** Present only in development mode. */
+  debug?: UpgradeDebugInfo;
 }

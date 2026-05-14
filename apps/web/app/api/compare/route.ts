@@ -3,7 +3,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { retrieveRRF } from '@/lib/retrieval';
 import { generateChatResponse } from '@/lib/llm';
 import { buildChatResponse } from '@/lib/validator';
-import type { ApiError, ProviderSettings, ComparePanelResult } from '@/lib/types';
+import type { ApiError, ProviderSettings, ComparePanelResult, UpgradeDebugInfo } from '@/lib/types';
+
+const IS_DEV = process.env.NODE_ENV === 'development';
+const BASE_EMBEDDING_MODEL = 'BAAI/bge-base-en-v1.5';
 
 // Mirrors the rate limiter in /api/chat (10 req/min per IP)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -93,7 +96,7 @@ export async function POST(req: NextRequest) {
 
   try {
     // Upgrade pipeline: BGE-base embeddings + Reciprocal Rank Fusion
-    const { bundle } = await retrieveRRF(retrievalQuery);
+    const { bundle, rrfScores } = await retrieveRRF(retrievalQuery);
 
     // safetyValve=true forces an answer — prevents blank right panel from clarification responses
     const llmOutput = await generateChatResponse(question, bundle, true, providerSettings);
@@ -110,6 +113,21 @@ export async function POST(req: NextRequest) {
       source_policy: chatResponse.source_policy,
       reformulated_query: reformulatedQuery,
     };
+
+    if (IS_DEV && llmOutput._debug) {
+      const upgradeDebug: UpgradeDebugInfo = {
+        retrieval: {
+          query_used: retrievalQuery,
+          embedding_model: BASE_EMBEDDING_MODEL,
+          fts_hits: rrfScores.filter((s) => s.rank_fts > 0).length,
+          semantic_hits: rrfScores.filter((s) => s.rank_semantic > 0).length,
+          confidence: bundle.confidence,
+          rrf_scores: rrfScores,
+        },
+        llm: llmOutput._debug,
+      };
+      result.debug = upgradeDebug;
+    }
 
     return NextResponse.json(result);
   } catch (err) {
