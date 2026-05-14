@@ -119,7 +119,7 @@ resource "aws_security_group" "alb" {
 
 resource "aws_security_group" "app" {
   name        = "${local.prefix}-app-sg"
-  description = "ECS tasks — accept port 3000 from ALB only"
+  description = "ECS tasks - accept port 3000 from ALB only"
   vpc_id      = aws_vpc.main.id
 
   ingress {
@@ -142,7 +142,7 @@ resource "aws_security_group" "app" {
 
 resource "aws_security_group" "efs" {
   name        = "${local.prefix}-efs-sg"
-  description = "EFS — accept NFS (2049) from ECS task security group only"
+  description = "EFS - accept NFS (2049) from ECS task security group only"
   vpc_id      = aws_vpc.main.id
 
   ingress {
