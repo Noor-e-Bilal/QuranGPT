@@ -1,0 +1,21 @@
+# Infrastructure
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/*.tfvars
+
+# Python artifacts
+**/__pycache__/
+**/.pytest_cache/
+scripts/.venv/
+
+# Large docs not needed in image
+Docs/
+
+# Node.js artifacts (re-installed during build)
+apps/web/node_modules/
+apps/web/.next/
+
+# Git and session
+.git/
+.copilot/

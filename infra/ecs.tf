@@ -26,54 +26,57 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
-  # ── EFS Volumes ─────────────────────────────────────────────────────────────
-  volume {
-    name = "sqlite"
-    efs_volume_configuration {
-      file_system_id          = aws_efs_file_system.data.id
-      transit_encryption      = "ENABLED"
-      authorization_config {
-        access_point_id = aws_efs_access_point.sqlite.id
-        iam             = "ENABLED"
-      }
-    }
-  }
-
+  # ── Volumes (ephemeral) ──────────────────────────────────────────────────────
+  # Using local (Docker) volumes instead of EFS to avoid Fargate EFS DNS issues.
+  # chroma-data and model-cache are ephemeral: the init container seeds ChromaDB
+  # on every task start from the data bundled in the web image.
   volume {
     name = "chroma-data"
-    efs_volume_configuration {
-      file_system_id          = aws_efs_file_system.data.id
-      transit_encryption      = "ENABLED"
-      authorization_config {
-        access_point_id = aws_efs_access_point.chroma.id
-        iam             = "ENABLED"
-      }
-    }
+    # empty block = Docker-managed ephemeral volume (lost when task stops)
   }
 
-  # BGE embedding models (~400 MB). Persisted on EFS so they are only
-  # downloaded once even across container restarts and redeployments.
   volume {
     name = "model-cache"
-    efs_volume_configuration {
-      file_system_id          = aws_efs_file_system.data.id
-      transit_encryption      = "ENABLED"
-      authorization_config {
-        access_point_id = aws_efs_access_point.model_cache.id
-        iam             = "ENABLED"
-      }
-    }
+    # empty block = Docker-managed ephemeral volume
   }
 
   container_definitions = jsonencode([
 
+    # ── Init container: seed ChromaDB ─────────────────────────────────────────
+    # Copies pre-built ChromaDB data from the web image into the shared
+    # chroma-data volume before the ChromaDB sidecar starts.
+    {
+      name      = "chroma-init"
+      image     = var.web_image
+      essential = false
+      command   = ["sh", "-c", "cp -rp /app/data/chroma-seed/. /data/ && echo 'ChromaDB seed complete'"]
+
+      mountPoints = [{
+        sourceVolume  = "chroma-data"
+        containerPath = "/data"
+        readOnly      = false
+      }]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.chroma.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "chroma-init"
+        }
+      }
+    },
+
     # ── ChromaDB sidecar ──────────────────────────────────────────────────────
-    # Runs alongside the web container in the same task so they share localhost.
-    # Next.js connects to it via CHROMA_URL=http://localhost:8000.
     {
       name      = "chroma"
       image     = "chromadb/chroma:latest"
       essential = true
+
+      dependsOn = [{
+        containerName = "chroma-init"
+        condition     = "SUCCESS"
+      }]
 
       portMappings = [{ containerPort = 8000, protocol = "tcp" }]
 
@@ -81,12 +84,11 @@ resource "aws_ecs_task_definition" "app" {
         { name = "IS_PERSISTENT",        value = "TRUE" },
         { name = "ALLOW_RESET",          value = "FALSE" },
         { name = "CHROMA_SERVER_HOST",   value = "0.0.0.0" },
-        { name = "PERSIST_DIRECTORY",    value = "/chroma/chroma" },
       ]
 
       mountPoints = [{
         sourceVolume  = "chroma-data"
-        containerPath = "/chroma/chroma"
+        containerPath = "/data"
         readOnly      = false
       }]
 
@@ -98,15 +100,6 @@ resource "aws_ecs_task_definition" "app" {
           awslogs-stream-prefix = "chroma"
         }
       }
-
-      healthCheck = {
-        # chromadb/chroma does not ship curl; use python3 (always present) instead
-        command     = ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat')\" || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 60
-      }
     },
 
     # ── Next.js web application ───────────────────────────────────────────────
@@ -117,17 +110,16 @@ resource "aws_ecs_task_definition" "app" {
 
       portMappings = [{ containerPort = 3000, protocol = "tcp" }]
 
-      # Wait for ChromaDB to pass its health check before starting the app
       dependsOn = [{
         containerName = "chroma"
-        condition     = "HEALTHY"
+        condition     = "START"
       }]
 
       environment = [
         { name = "NODE_ENV",           value = "production" },
         { name = "PORT",               value = "3000" },
         { name = "CHROMA_URL",         value = "http://localhost:8000" },
-        { name = "DB_PATH",            value = "/mnt/sqlite/quran.db" },
+        # DB_PATH is set as ENV in the Dockerfile (/app/data/quran.db, bundled in image)
         { name = "ANTHROPIC_BASE_URL", value = "https://opencode.ai/zen" },
         { name = "ANTHROPIC_MODEL",    value = "minimax-m2.5-free" },
       ]
@@ -154,12 +146,8 @@ resource "aws_ecs_task_definition" "app" {
 
       mountPoints = [
         {
-          sourceVolume  = "sqlite"
-          containerPath = "/mnt/sqlite"
-          readOnly      = false
-        },
-        {
-          # @xenova/transformers caches ONNX models at ~/.cache/huggingface/hub/
+          # @xenova/transformers caches ONNX models here on first query.
+          # Ephemeral: models re-download on restart but are cached within task lifetime.
           sourceVolume  = "model-cache"
           containerPath = "/root/.cache/huggingface"
           readOnly      = false
@@ -184,6 +172,7 @@ resource "aws_ecs_service" "app" {
   task_definition = aws_ecs_task_definition.app.arn
   desired_count   = var.desired_count
   launch_type     = "FARGATE"
+  platform_version = "1.4.0"
 
   deployment_minimum_healthy_percent = 50
   deployment_maximum_percent         = 200
@@ -200,7 +189,7 @@ resource "aws_ecs_service" "app" {
     container_port   = 3000
   }
 
-  depends_on = [aws_lb_listener.http, aws_efs_mount_target.data]
+  depends_on = [aws_lb_listener.http]
 
   lifecycle {
     # Deployments are managed via CI/CD (docker push + force-new-deployment).
