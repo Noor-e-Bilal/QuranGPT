@@ -36,6 +36,13 @@ data/*.db
 *.swp
 *.swo
 
+# Terraform
+infra/.terraform/
+infra/terraform.tfvars
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/terraform.tfstate.d/
+
 # SQLite temp files
 *.db-shm
 *.db-wal

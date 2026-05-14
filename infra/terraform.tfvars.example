@@ -1,0 +1,27 @@
+# Copy to terraform.tfvars (which is gitignored) and fill in real values.
+#   cp terraform.tfvars.example terraform.tfvars
+
+aws_region = "us-east-1"
+env        = "prod"
+app_name   = "quransays"
+
+# ── Compute ───────────────────────────────────────────────────────────────────
+web_cpu       = 1024  # 1 vCPU
+web_memory    = 2048  # 2 GB
+chroma_cpu    = 512
+chroma_memory = 1024
+desired_count = 1
+
+# ── Web image ─────────────────────────────────────────────────────────────────
+# Run `terraform apply` once first (without a service) to create the ECR repo,
+# push your image, then set this value and apply again.
+web_image = "REPLACE_ME_AFTER_FIRST_PUSH"
+
+# ── API keys ──────────────────────────────────────────────────────────────────
+# Leave empty here and set via Secrets Manager after first apply, OR pass
+# values on the command line:
+#   terraform apply -var="anthropic_api_key=sk-..."
+anthropic_api_key  = ""
+claude_api_key     = ""
+openai_api_key     = ""
+openrouter_api_key = ""
