@@ -79,7 +79,16 @@ export default function DebugPanel({ debug, onClose }: Props) {
             <KV k="Safety Valve" v={String(debug.safety_valve)} />
             <KV k="Cache Hit" v={String(debug.cache_hit)} />
             <KV k="Original Question" v={debug.original_question} />
+            {debug.reformulated_query && (
+              <KV k="Reformulated Query" v={debug.reformulated_query} />
+            )}
             <KV k="Enriched Query" v={debug.enriched_query} />
+            {debug.provider_settings && (
+              <>
+                <KV k="Provider" v={debug.provider_settings.provider} mono />
+                <KV k="Model" v={debug.provider_settings.model} mono />
+              </>
+            )}
           </Section>
 
           {/* Retrieval */}

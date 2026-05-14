@@ -1,19 +1,95 @@
 import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import type {
   EvidenceBundle,
   LLMChatOutput,
   LLMVerseOutput,
   AyahRow,
   RetrievalConfidence,
+  ProviderSettings,
 } from "./types";
 
-const MODEL = process.env.ANTHROPIC_MODEL ?? "minimax-m2.5-free";
+/** Default (reformulation) model — always minimax via opencode.ai. */
+const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? "minimax-m2.5-free";
 
-function client() {
-  return new Anthropic({
-    baseURL: process.env.ANTHROPIC_BASE_URL ?? "https://opencode.ai/zen",
-    apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+/** Build the right SDK client based on ProviderSettings. Falls back to default. */
+function getClient(
+  settings?: ProviderSettings,
+): { callText: (prompt: string, temp: number) => Promise<string> } {
+  if (!settings) {
+    // Default: minimax via opencode.ai using Anthropic SDK
+    const anthropic = new Anthropic({
+      baseURL: process.env.ANTHROPIC_BASE_URL ?? "https://opencode.ai/zen",
+      apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+    });
+    return {
+      callText: async (prompt, temp) => {
+        const msg = await anthropic.messages.create({
+          model: DEFAULT_MODEL,
+          max_tokens: 3000,
+          temperature: temp,
+          messages: [{ role: "user", content: prompt }],
+        });
+        const block = msg.content.find((b) => b.type === "text");
+        return block?.type === "text" ? block.text : "";
+      },
+    };
+  }
+
+  if (settings.provider === "claude") {
+    const anthropic = new Anthropic({
+      baseURL:
+        process.env.CLAUDE_BASE_URL ?? "https://api.anthropic.com",
+      apiKey: process.env.CLAUDE_API_KEY ?? "",
+    });
+    return {
+      callText: async (prompt, temp) => {
+        const msg = await anthropic.messages.create({
+          model: settings.model,
+          max_tokens: 3000,
+          temperature: temp,
+          messages: [{ role: "user", content: prompt }],
+        });
+        const block = msg.content.find((b) => b.type === "text");
+        return block?.type === "text" ? block.text : "";
+      },
+    };
+  }
+
+  // openai or openrouter — both use the OpenAI-compatible SDK
+  const openai = new OpenAI({
+    apiKey:
+      settings.provider === "openai"
+        ? (process.env.OPENAI_API_KEY ?? "")
+        : (process.env.OPENROUTER_API_KEY ?? ""),
+    baseURL:
+      settings.provider === "openrouter"
+        ? "https://openrouter.ai/api/v1"
+        : undefined, // OpenAI default base URL
+    defaultHeaders:
+      settings.provider === "openrouter"
+        ? { "HTTP-Referer": "https://quransays.app", "X-Title": "QuranSays" }
+        : undefined,
   });
+  return {
+    callText: async (prompt, temp) => {
+      const completion = await openai.chat.completions.create({
+        model: settings.model,
+        max_tokens: 3000,
+        temperature: temp,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return completion.choices[0]?.message?.content ?? "";
+    },
+  };
+}
+
+async function callLLM(
+  prompt: string,
+  settings?: ProviderSettings,
+): Promise<string> {
+  const temp = settings?.temperature ?? 1.0;
+  return getClient(settings).callText(prompt, temp);
 }
 
 // ---------- Chat ----------------------------------------------------------
@@ -148,9 +224,11 @@ export async function generateChatResponse(
   question: string,
   evidence: EvidenceBundle,
   safetyValve = false,
+  settings?: ProviderSettings,
 ): Promise<LLMChatOutput> {
   const prompt = buildChatPrompt(question, evidence, safetyValve);
-  const raw = await callLLM(prompt);
+  const raw = await callLLM(prompt, settings);
+  const model = settings?.model ?? DEFAULT_MODEL;
   const output = parseWithRepair<LLMChatOutput>(raw, {
     needs_clarification: false,
     clarifying_question: null,
@@ -163,7 +241,7 @@ export async function generateChatResponse(
   output._debug = {
     prompt_type: "chat",
     prompt_sent: prompt,
-    model: MODEL,
+    model,
     raw_response: raw,
   };
   return output;
@@ -177,9 +255,11 @@ export async function generateClarificationQuestion(
   question: string,
   evidence: EvidenceBundle,
   confidence: RetrievalConfidence,
+  settings?: ProviderSettings,
 ): Promise<LLMChatOutput> {
   const prompt = buildClarificationPrompt(question, evidence, confidence);
-  const raw = await callLLM(prompt);
+  const raw = await callLLM(prompt, settings);
+  const model = settings?.model ?? DEFAULT_MODEL;
   const output = parseWithRepair<LLMChatOutput>(raw, {
     needs_clarification: true,
     clarifying_question:
@@ -193,7 +273,7 @@ export async function generateClarificationQuestion(
   output._debug = {
     prompt_type: "clarification",
     prompt_sent: prompt,
-    model: MODEL,
+    model,
     raw_response: raw,
   };
   return output;
@@ -227,9 +307,10 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
 export async function generateVerseExplanation(
   ayah: AyahRow,
   related: AyahRow[],
+  settings?: ProviderSettings,
 ): Promise<LLMVerseOutput> {
   const prompt = buildVersePrompt(ayah, related);
-  const raw = await callLLM(prompt);
+  const raw = await callLLM(prompt, settings);
   return parseWithRepair<LLMVerseOutput>(raw, {
     explanation: "Unable to generate explanation.",
     surah_context: "",
@@ -238,18 +319,6 @@ export async function generateVerseExplanation(
 }
 
 // ---------- Shared helpers ------------------------------------------------
-
-async function callLLM(prompt: string): Promise<string> {
-  const msg = await client().messages.create({
-    model: MODEL,
-    max_tokens: 3000,
-    temperature: 1.0,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const block = msg.content.find((b) => b.type === "text");
-  return block?.type === "text" ? block.text : "";
-}
 
 function parseWithRepair<T>(raw: string, fallback: T): T {
   // Strip optional markdown code fences
@@ -277,5 +346,33 @@ function parseWithRepair<T>(raw: string, fallback: T): T {
       raw.slice(0, 200),
     );
     return fallback;
+  }
+}
+
+// ---------- Query reformulation -------------------------------------------
+
+const REFORMULATION_PROMPT = (raw: string) =>
+  `You are a search-query optimizer for a Quranic knowledge base.
+Rewrite the user question below into a rich, specific retrieval query that maximises recall of relevant Quran verses. 
+Rules:
+- Expand abbreviations and add relevant Islamic terminology
+- Make implicit concepts explicit (e.g. "be patient" → "patience perseverance sabr hardship")
+- Keep the output under 40 words
+- Return ONLY the rewritten query — no explanation, no punctuation beyond the query itself
+
+User question: "${raw}"`;
+
+/**
+ * Rewrites a short user question into a richer semantic search query.
+ * Always uses the default (minimax) model regardless of user provider choice.
+ * Returns the original question unchanged if reformulation fails.
+ */
+export async function reformulateQuery(raw: string): Promise<string> {
+  try {
+    const result = await callLLM(REFORMULATION_PROMPT(raw));
+    const cleaned = result.trim().replace(/^["']|["']$/g, "");
+    return cleaned || raw;
+  } catch {
+    return raw;
   }
 }

@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { retrieve } from '@/lib/retrieval';
+import { retrieve, retrieveComparison } from '@/lib/retrieval';
 import { generateChatResponse, generateClarificationQuestion } from '@/lib/llm';
 import { buildChatResponse, fallbackChatResponse } from '@/lib/validator';
 import { chatCache, normaliseCacheKey } from '@/lib/cache';
-import type { ApiError, DebugInfo } from '@/lib/types';
+import type { ApiError, DebugInfo, ProviderSettings } from '@/lib/types';
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(err, { status: 429 });
   }
 
-  let body: { question?: unknown };
+  let body: { question?: unknown; providerSettings?: unknown; compare?: unknown; reformulated_query?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -90,6 +90,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(err, { status: 400 });
   }
 
+  // Optional: pre-reformulated query from /api/reformulate two-step flow
+  const reformulatedQuery =
+    typeof body.reformulated_query === 'string' && body.reformulated_query.trim()
+      ? body.reformulated_query.trim()
+      : undefined;
+
+  // Optional: provider/model/temperature settings from UI
+  const providerSettings = isProviderSettings(body.providerSettings)
+    ? body.providerSettings
+    : undefined;
+
+  const compareMode = body.compare === true;
+
   try {
     const clarificationRound = parseClarificationRound(question);
     const isClarificationTurn = clarificationRound > 0;
@@ -102,53 +115,67 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Use enriched query (strips markers, combines context) for better retrieval
+    // Use enriched query (strips markers, combines context) for better retrieval.
+    // If client sent a pre-reformulated query from /api/reformulate, use it directly.
     const enrichedQuery = buildEnrichedQuery(question);
-    const evidence = await retrieve(enrichedQuery);
+    const retrievalQuery = reformulatedQuery ?? enrichedQuery;
+    const evidence = await retrieve(retrievalQuery);
 
     // ── Confidence gating ────────────────────────────────────────────────
-    // Safety valve: after MAX_CLARIFICATION_ROUNDS, answer with whatever we have
     const safetyValve =
       clarificationRound >= MAX_CLARIFICATION_ROUNDS && evidence.confidence !== 'high';
 
     if (evidence.confidence !== 'high' && !safetyValve) {
-      // Not enough evidence yet — ask a targeted clarification question
       const clarifyOutput = await generateClarificationQuestion(
         question,
         evidence,
-        evidence.confidence
+        evidence.confidence,
+        providerSettings,
       );
       const clarifyResponse = buildChatResponse(clarifyOutput, evidence, requestId);
       if (IS_DEV && clarifyOutput._debug && evidence._debug) {
         const debug: DebugInfo = {
           timestamp: new Date().toISOString(),
           original_question: question,
+          reformulated_query: reformulatedQuery,
           enriched_query: enrichedQuery,
           clarification_round: clarificationRound,
           safety_valve: false,
           cache_hit: false,
+          provider_settings: providerSettings
+            ? { provider: providerSettings.provider, model: providerSettings.model }
+            : undefined,
           retrieval: evidence._debug,
           llm: clarifyOutput._debug,
         };
         clarifyResponse.debug = debug;
       }
-      // Clarification responses are never cached
       return NextResponse.json(clarifyResponse);
     }
 
     // ── Answer path (HIGH confidence OR safety valve) ─────────────────────
-    const llmOutput = await generateChatResponse(question, evidence, safetyValve);
+    const llmOutput = await generateChatResponse(question, evidence, safetyValve, providerSettings);
 
-    // Guard: if retrieval found nothing and LLM isn't requesting clarification,
-    // return safe fallback to prevent ungrounded answers.
     if (evidence.hitCount === 0 && !llmOutput.needs_clarification) {
       return NextResponse.json(fallbackChatResponse(requestId));
     }
 
     const response = buildChatResponse(llmOutput, evidence, requestId);
 
-    // Only cache HIGH-confidence answers for original questions (without debug info).
-    // Spread to clone so a later response.debug mutation doesn't affect the cached copy.
+    // Attach reformulated query so UI can show "searched for: ..."
+    if (reformulatedQuery) {
+      response.reformulated_query = reformulatedQuery;
+    }
+
+    // Compare mode: run both pipelines and attach results
+    if (compareMode) {
+      try {
+        response._comparison = await retrieveComparison(retrievalQuery);
+      } catch (err) {
+        console.error('[/api/chat] comparison error (non-fatal):', err);
+      }
+    }
+
     if (!isClarificationTurn && evidence.confidence === 'high' && !llmOutput.needs_clarification) {
       chatCache.set(normaliseCacheKey(question), { ...response });
     }
@@ -157,10 +184,14 @@ export async function POST(req: NextRequest) {
       const debug: DebugInfo = {
         timestamp: new Date().toISOString(),
         original_question: question,
+        reformulated_query: reformulatedQuery,
         enriched_query: enrichedQuery,
         clarification_round: clarificationRound,
         safety_valve: safetyValve,
         cache_hit: false,
+        provider_settings: providerSettings
+          ? { provider: providerSettings.provider, model: providerSettings.model }
+          : undefined,
         retrieval: evidence._debug,
         llm: llmOutput._debug,
       };
@@ -179,4 +210,15 @@ export async function POST(req: NextRequest) {
     };
     return NextResponse.json(apiErr, { status: 500 });
   }
+}
+
+function isProviderSettings(v: unknown): v is ProviderSettings {
+  if (!v || typeof v !== 'object') return false;
+  const p = v as Record<string, unknown>;
+  return (
+    (p.provider === 'claude' || p.provider === 'openai' || p.provider === 'openrouter') &&
+    typeof p.model === 'string' &&
+    p.model.length > 0 &&
+    typeof p.temperature === 'number'
+  );
 }
