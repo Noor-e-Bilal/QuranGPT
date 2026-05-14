@@ -1,5 +1,5 @@
 import { searchFTS, getAyahsByReferences, expandQueryForSemantic } from './db';
-import { queryCollection } from './chroma';
+import { queryCollection, queryCollectionBase } from './chroma';
 import type {
   EvidenceAyah,
   EvidenceBundle,
@@ -15,6 +15,7 @@ const SEMANTIC_WEIGHT = 0.6;
 const SCORE_THRESHOLD = 0.15;   // Minimum score to include a hit
 const TOP_K = 10;
 const EMBEDDING_MODEL = 'BAAI/bge-small-en-v1.5';
+const BASE_EMBEDDING_MODEL = 'BAAI/bge-base-en-v1.5';
 
 // Tiered confidence thresholds (calibrated for BGE cosine similarity scores)
 const HIGH_SCORE = 0.50;   // Strong evidence: direct semantic match
@@ -114,12 +115,13 @@ export async function retrieve(query: string): Promise<EvidenceBundle> {
   };
 }
 
-// ---------- RRF pipeline --------------------------------------------------
+// ---------- RRF + BGE-base pipeline ---------------------------------------
 
 const RRF_K = 60; // Standard RRF constant
 
 /**
- * Reciprocal Rank Fusion scoring over the same FTS + semantic sources.
+ * Reciprocal Rank Fusion scoring over FTS + BGE-base semantic results.
+ * Uses the base_quran_v2 collection (768-dim) for semantic ranking.
  * score(doc) = Σ 1/(k + rank_i) for each list the doc appears in.
  */
 export async function retrieveRRF(query: string): Promise<{
@@ -129,7 +131,7 @@ export async function retrieveRRF(query: string): Promise<{
   const expandedQuery = expandQueryForSemantic(query);
   const [ftsRows, chromaRows] = await Promise.all([
     Promise.resolve(searchFTS(query, 20)),
-    queryCollection(expandedQuery, 20).catch(() => []),
+    queryCollectionBase(expandedQuery, 20).catch(() => []),
   ]);
 
   // Build rank maps (1-indexed)
@@ -196,7 +198,7 @@ export async function retrieveComparison(
     currentResult._debug?.scores ?? [];
 
   const current: ComparisonPipelineResult = {
-    label: 'Current: BGE-small + Linear Blend',
+    label: 'Current: BGE-small (384-dim) + Linear Blend',
     formula: 'FTS × 0.4 + Semantic × 0.6',
     confidence: currentResult.confidence,
     ayahs: currentResult.ayahs,
@@ -204,8 +206,8 @@ export async function retrieveComparison(
   };
 
   const candidate: ComparisonPipelineResult = {
-    label: 'Proposed: BGE-small + RRF (k=60)',
-    formula: 'RRF = Σ 1/(60 + rank_i)',
+    label: 'Proposed: BGE-base (768-dim) + RRF (k=60)',
+    formula: 'RRF = Σ 1/(60 + rank_i)  •  model: ' + BASE_EMBEDDING_MODEL,
     confidence: rrfResult.bundle.confidence,
     ayahs: rrfResult.bundle.ayahs,
     scores: rrfResult.rrfScores,
@@ -216,7 +218,8 @@ export async function retrieveComparison(
     current,
     candidate,
     note:
-      'Both pipelines use the existing BGE-small-en-v1.5 embeddings. ' +
-      'The full BGE-base upgrade requires a Python index rebuild (scripts/ingest/build_index.py).',
+      'Current pipeline uses quran_v2 (BGE-small, 384-dim). ' +
+      'Proposed pipeline uses base_quran_v2 (BGE-base, 768-dim). ' +
+      'Build the base index with: python3 scripts/ingest/build_index_base.py',
   };
 }
