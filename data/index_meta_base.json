@@ -1,0 +1,7 @@
+{
+  "collection": "base_quran_v2",
+  "embedding_model": "BAAI/bge-base-en-v1.5",
+  "embedding_dim": 768,
+  "ayah_count": 6236,
+  "chroma_url": "http://localhost:8000"
+}

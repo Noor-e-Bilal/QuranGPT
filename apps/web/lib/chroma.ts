@@ -2,7 +2,8 @@ import type { IEmbeddingFunction } from 'chromadb';
 import { ChromaClient } from 'chromadb';
 
 const CHROMA_URL = process.env.CHROMA_URL ?? 'http://localhost:8000';
-const COLLECTION_NAME = 'quran_v2';
+const COLLECTION_NAME = 'quran_v2';         // BGE-small (384-dim)
+const BASE_COLLECTION_NAME = 'base_quran_v2'; // BGE-base (768-dim)
 
 // BGE v1.5 requires this prefix on queries (not on stored documents)
 const BGE_QUERY_PREFIX =
@@ -10,25 +11,53 @@ const BGE_QUERY_PREFIX =
 
 let _client: ChromaClient | null = null;
 
-// Lazy-loaded singleton extractor — model downloads once on first use (~130MB)
-let _extractorPromise: Promise<(text: string, opts: Record<string, unknown>) => Promise<{ data: Float32Array }>> | null = null;
+type ExtractorFn = (text: string, opts: Record<string, unknown>) => Promise<{ data: Float32Array }>;
 
-function getExtractor() {
-  if (!_extractorPromise) {
-    _extractorPromise = import('@xenova/transformers').then(
+// Lazy-loaded singleton extractors — each model downloads once on first use
+let _smallExtractorPromise: Promise<ExtractorFn> | null = null;
+let _baseExtractorPromise: Promise<ExtractorFn> | null = null;
+
+function getExtractor(): Promise<ExtractorFn> {
+  if (!_smallExtractorPromise) {
+    _smallExtractorPromise = import('@xenova/transformers').then(
       ({ pipeline, env }) => {
         env.useBrowserCache = false; // Node.js: use filesystem cache
-        return pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5') as Promise<
-          (text: string, opts: Record<string, unknown>) => Promise<{ data: Float32Array }>
-        >;
+        return pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5') as Promise<ExtractorFn>;
       }
-    );
+    ).catch((err) => {
+      _smallExtractorPromise = null; // allow retry on next call
+      throw err;
+    });
   }
-  return _extractorPromise;
+  return _smallExtractorPromise;
+}
+
+function getBaseExtractor(): Promise<ExtractorFn> {
+  if (!_baseExtractorPromise) {
+    _baseExtractorPromise = import('@xenova/transformers').then(
+      ({ pipeline, env }) => {
+        env.useBrowserCache = false;
+        return pipeline('feature-extraction', 'Xenova/bge-base-en-v1.5') as Promise<ExtractorFn>;
+      }
+    ).catch((err) => {
+      _baseExtractorPromise = null; // allow retry on next call
+      throw err;
+    });
+  }
+  return _baseExtractorPromise;
 }
 
 async function embedQuery(text: string): Promise<number[]> {
   const extractor = await getExtractor();
+  const output = await extractor(BGE_QUERY_PREFIX + text, {
+    pooling: 'mean',
+    normalize: true,
+  });
+  return Array.from(output.data);
+}
+
+async function embedQueryBase(text: string): Promise<number[]> {
+  const extractor = await getBaseExtractor();
   const output = await extractor(BGE_QUERY_PREFIX + text, {
     pooling: 'mean',
     normalize: true,
@@ -56,13 +85,15 @@ export interface ChromaResult {
   distance: number;
 }
 
-export async function queryCollection(
-  text: string,
-  topK = 20
+async function _queryChroma(
+  collectionName: string,
+  embedFn: () => Promise<number[]>,
+  topK: number,
 ): Promise<ChromaResult[]> {
+  // Fetch collection and compute embedding in parallel
   const [collection, queryEmbedding] = await Promise.all([
-    getClient().getCollection({ name: COLLECTION_NAME, embeddingFunction: stubEF }),
-    embedQuery(text),
+    getClient().getCollection({ name: collectionName, embeddingFunction: stubEF }),
+    embedFn(),
   ]);
 
   const results = await collection.query({
@@ -84,6 +115,22 @@ export async function queryCollection(
       distance: distances[i] ?? 1,
     };
   });
+}
+
+/** Query the BGE-small collection (quran_v2, 384-dim). */
+export async function queryCollection(
+  text: string,
+  topK = 20,
+): Promise<ChromaResult[]> {
+  return _queryChroma(COLLECTION_NAME, () => embedQuery(text), topK);
+}
+
+/** Query the BGE-base collection (base_quran_v2, 768-dim). Falls back to [] if collection missing. */
+export async function queryCollectionBase(
+  text: string,
+  topK = 20,
+): Promise<ChromaResult[]> {
+  return _queryChroma(BASE_COLLECTION_NAME, () => embedQueryBase(text), topK);
 }
 
 export async function checkChromaHealth(): Promise<boolean> {

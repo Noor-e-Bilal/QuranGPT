@@ -85,6 +85,7 @@ jest.mock('@/lib/llm', () => ({
       related_references: [],
     })
   ),
+  reformulateQuery: jest.fn((q: string) => Promise.resolve(q)),
 }));
 
 import { POST as chatPOST } from '@/app/api/chat/route';

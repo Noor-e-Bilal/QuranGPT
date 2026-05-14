@@ -1,5 +1,34 @@
 // Shared types across the QuranSays backend
 
+// ---- Provider / LLM settings ----
+
+export type LLMProvider = 'opencode' | 'claude' | 'openai' | 'openrouter';
+
+export interface ProviderSettings {
+  provider: LLMProvider;
+  model: string;
+  /** 0.0 – 1.0 */
+  temperature: number;
+}
+
+export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
+  opencode: ['minimax-m2.5-free'],
+  claude: ['claude-opus-4-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1'],
+  openrouter: [
+    'google/gemini-2.5-flash-preview:free',
+    'meta-llama/llama-4-maverick:free',
+    'mistralai/mistral-small-3.1-24b-instruct:free',
+    'deepseek/deepseek-chat-v3-0324:free',
+  ],
+};
+
+export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
+  provider: 'opencode',
+  model: 'minimax-m2.5-free',
+  temperature: 0.7,
+};
+
 export interface AyahRow {
   surah: number;
   ayah: number;
@@ -46,6 +75,8 @@ export interface ChatResponse {
   confidence: 'high' | 'medium' | 'low';
   source_policy: string;
   request_id: string;
+  /** Original question reformulated for retrieval (shown in UI). */
+  reformulated_query?: string;
   /** Present only in development mode. */
   debug?: DebugInfo;
 }
@@ -98,10 +129,12 @@ export interface RetrievalDebug {
 export interface DebugInfo {
   timestamp: string;
   original_question: string;
+  reformulated_query?: string;
   enriched_query: string;
   clarification_round: number;
   safety_valve: boolean;
   cache_hit: boolean;
+  provider_settings?: Pick<ProviderSettings, 'provider' | 'model'>;
   retrieval: RetrievalDebug;
   llm: LLMCallDebug;
 }
@@ -122,4 +155,72 @@ export interface LLMVerseOutput {
   explanation: string;
   surah_context: string;
   related_references: string[];
+}
+
+// ---- Pipeline comparison types ----
+
+export interface RRFScoreRow {
+  reference: string;
+  /** 1-indexed FTS rank; 0 = not in FTS results */
+  rank_fts: number;
+  /** 1-indexed semantic rank; 0 = not in semantic results */
+  rank_semantic: number;
+  rrf_score: number;
+}
+
+export interface ComparisonPipelineResult {
+  label: string;
+  formula: string;
+  confidence: RetrievalConfidence;
+  ayahs: EvidenceAyah[];
+  scores: RetrievalDebugScore[] | RRFScoreRow[];
+}
+
+export interface ComparisonBundle {
+  query: string;
+  current: ComparisonPipelineResult;
+  candidate: ComparisonPipelineResult;
+  /** Surfaced in the UI to explain model-upgrade limitations. */
+  note: string;
+}
+
+/**
+ * Retrieval debug info for the upgrade pipeline (BGE-base + RRF).
+ * Mirrors RetrievalDebug but uses RRFScoreRow[] instead of RetrievalDebugScore[].
+ */
+export interface UpgradeRetrievalDebug {
+  query_used: string;
+  embedding_model: string;
+  fts_hits: number;
+  semantic_hits: number;
+  confidence: RetrievalConfidence;
+  rrf_scores: RRFScoreRow[];
+}
+
+/**
+ * Debug payload attached to ComparePanelResult in dev mode.
+ */
+export interface UpgradeDebugInfo {
+  retrieval: UpgradeRetrievalDebug;
+  llm: LLMCallDebug;
+}
+
+/**
+ * A full LLM-generated answer produced by one retrieval pipeline.
+ * Returned by /api/compare — one per pipeline (current vs upgrade).
+ */
+export interface ComparePanelResult {
+  /** Human-readable pipeline name, e.g. "Current" or "Upgrade" */
+  label: string;
+  /** Formula description, e.g. "BGE-small · FTS×0.4 + Semantic×0.6" */
+  formula: string;
+  answer: string;
+  summary: string;
+  citations: Citation[];
+  limitations: string | null;
+  confidence: RetrievalConfidence;
+  source_policy: string;
+  reformulated_query?: string;
+  /** Present only in development mode. */
+  debug?: UpgradeDebugInfo;
 }

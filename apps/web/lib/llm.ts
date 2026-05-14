@@ -1,13 +1,97 @@
-import Anthropic from '@anthropic-ai/sdk';
-import type { EvidenceBundle, LLMChatOutput, LLMVerseOutput, AyahRow, RetrievalConfidence } from './types';
+import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
+import type {
+  EvidenceBundle,
+  LLMChatOutput,
+  LLMVerseOutput,
+  AyahRow,
+  RetrievalConfidence,
+  ProviderSettings,
+} from "./types";
 
-const MODEL = process.env.ANTHROPIC_MODEL ?? 'minimax-m2.5-free';
+/** Default (reformulation) model — always minimax via opencode.ai. */
+const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? "minimax-m2.5-free";
 
-function client() {
-  return new Anthropic({
-    baseURL: process.env.ANTHROPIC_BASE_URL ?? 'https://opencode.ai/zen',
-    apiKey: process.env.ANTHROPIC_API_KEY ?? '',
+/** Build the right SDK client based on ProviderSettings. Falls back to default. */
+function getClient(
+  settings?: ProviderSettings,
+): { callText: (prompt: string, temp: number) => Promise<string> } {
+  if (!settings || settings.provider === "opencode") {
+    // Default: minimax via opencode.ai using Anthropic SDK
+    const model =
+      settings?.provider === "opencode" ? settings.model : DEFAULT_MODEL;
+    const anthropic = new Anthropic({
+      baseURL: process.env.ANTHROPIC_BASE_URL ?? "https://opencode.ai/zen",
+      apiKey: process.env.ANTHROPIC_API_KEY ?? "",
+    });
+    return {
+      callText: async (prompt, temp) => {
+        const msg = await anthropic.messages.create({
+          model,
+          max_tokens: 3000,
+          temperature: temp,
+          messages: [{ role: "user", content: prompt }],
+        });
+        const block = msg.content.find((b) => b.type === "text");
+        return block?.type === "text" ? block.text : "";
+      },
+    };
+  }
+
+  if (settings.provider === "claude") {
+    const anthropic = new Anthropic({
+      baseURL:
+        process.env.CLAUDE_BASE_URL ?? "https://api.anthropic.com",
+      apiKey: process.env.CLAUDE_API_KEY ?? "",
+    });
+    return {
+      callText: async (prompt, temp) => {
+        const msg = await anthropic.messages.create({
+          model: settings.model,
+          max_tokens: 3000,
+          temperature: temp,
+          messages: [{ role: "user", content: prompt }],
+        });
+        const block = msg.content.find((b) => b.type === "text");
+        return block?.type === "text" ? block.text : "";
+      },
+    };
+  }
+
+  // openai or openrouter — both use the OpenAI-compatible SDK
+  const openai = new OpenAI({
+    apiKey:
+      settings.provider === "openai"
+        ? (process.env.OPENAI_API_KEY ?? "")
+        : (process.env.OPENROUTER_API_KEY ?? ""),
+    baseURL:
+      settings.provider === "openrouter"
+        ? "https://openrouter.ai/api/v1"
+        : undefined, // OpenAI default base URL
+    defaultHeaders:
+      settings.provider === "openrouter"
+        ? { "HTTP-Referer": "https://quransays.app", "X-Title": "QuranSays" }
+        : undefined,
   });
+  return {
+    callText: async (prompt, temp) => {
+      const completion = await openai.chat.completions.create({
+        model: settings.model,
+        max_tokens: 3000,
+        temperature: temp,
+        messages: [{ role: "user", content: prompt }],
+      });
+      return completion.choices[0]?.message?.content ?? "";
+    },
+  };
+}
+
+async function callLLM(
+  prompt: string,
+  settings?: ProviderSettings,
+): Promise<string> {
+  const temp = settings?.temperature ?? 1.0;
+  return getClient(settings).callText(prompt, temp);
 }
 
 // ---------- Chat ----------------------------------------------------------
@@ -15,26 +99,28 @@ function client() {
 const MAX_AYAH_CHARS = 200;
 
 function truncate(text: string, max: number): string {
-  return text.length <= max ? text : text.slice(0, max - 1) + '…';
+  return text.length <= max ? text : text.slice(0, max - 1) + "…";
 }
 
 function buildChatPrompt(
   question: string,
   evidence: EvidenceBundle,
-  safetyValve = false
+  safetyValve = false,
 ): string {
   const evidenceText = evidence.ayahs
-    .map((a) => `[${a.reference}] "${truncate(a.display_text, MAX_AYAH_CHARS)}"`)
-    .join('\n');
+    .map(
+      (a) => `[${a.reference}] "${truncate(a.display_text, MAX_AYAH_CHARS)}"`,
+    )
+    .join("\n");
 
   const safetyNote = safetyValve
     ? '\n⚠️ SAFETY VALVE ACTIVE: After multiple clarification rounds, present the best available answer. Set confidence="medium" and explain limitations clearly. Do NOT ask for clarification again.\n'
-    : '';
+    : "";
 
   return `You are QuranSays, a scholarly assistant that answers ALL questions exclusively from The Clear Quran.
 ${safetyNote}
 EVIDENCE (retrieved ayahs):
-${evidenceText || '(no ayahs retrieved)'}
+${evidenceText || "(no ayahs retrieved)"}
 
 USER QUESTION: ${question}
 
@@ -97,20 +183,20 @@ If clarification needed, use this shape instead:
 function buildClarificationPrompt(
   question: string,
   evidence: EvidenceBundle,
-  confidence: RetrievalConfidence
+  confidence: RetrievalConfidence,
 ): string {
   const topAyahs = evidence.ayahs.slice(0, 3);
   const partialContext =
     topAyahs.length > 0
       ? `The search found partially related content:\n${topAyahs
           .map((a) => `  [${a.reference}] "${truncate(a.display_text, 100)}"`)
-          .join('\n')}`
-      : 'No directly relevant Quran verses were found.';
+          .join("\n")}`
+      : "No directly relevant Quran verses were found.";
 
   const confidenceNote =
-    confidence === 'medium'
-      ? 'Evidence is partial — related content was found but the question needs more specificity to give a precise answer.'
-      : 'Evidence is weak or missing — the question may need to be rephrased or connected to a Quranic concept.';
+    confidence === "medium"
+      ? "Evidence is partial — related content was found but the question needs more specificity to give a precise answer."
+      : "Evidence is weak or missing — the question may need to be rephrased or connected to a Quranic concept.";
 
   return `You are QuranSays. A user asked: "${question}"
 
@@ -139,20 +225,27 @@ Return ONLY valid JSON:
 export async function generateChatResponse(
   question: string,
   evidence: EvidenceBundle,
-  safetyValve = false
+  safetyValve = false,
+  settings?: ProviderSettings,
 ): Promise<LLMChatOutput> {
   const prompt = buildChatPrompt(question, evidence, safetyValve);
-  const raw = await callLLM(prompt);
+  const raw = await callLLM(prompt, settings);
+  const model = settings?.model ?? DEFAULT_MODEL;
   const output = parseWithRepair<LLMChatOutput>(raw, {
     needs_clarification: false,
     clarifying_question: null,
-    answer: 'Unable to generate a response at this time.',
-    summary: 'Error',
+    answer: "Unable to generate a response at this time.",
+    summary: "Error",
     citations: [],
-    limitations: 'LLM response could not be parsed.',
-    confidence: 'low',
+    limitations: "LLM response could not be parsed.",
+    confidence: "low",
   });
-  output._debug = { prompt_type: 'chat', prompt_sent: prompt, model: MODEL, raw_response: raw };
+  output._debug = {
+    prompt_type: "chat",
+    prompt_sent: prompt,
+    model,
+    raw_response: raw,
+  };
   return output;
 }
 
@@ -163,21 +256,28 @@ export async function generateChatResponse(
 export async function generateClarificationQuestion(
   question: string,
   evidence: EvidenceBundle,
-  confidence: RetrievalConfidence
+  confidence: RetrievalConfidence,
+  settings?: ProviderSettings,
 ): Promise<LLMChatOutput> {
   const prompt = buildClarificationPrompt(question, evidence, confidence);
-  const raw = await callLLM(prompt);
+  const raw = await callLLM(prompt, settings);
+  const model = settings?.model ?? DEFAULT_MODEL;
   const output = parseWithRepair<LLMChatOutput>(raw, {
     needs_clarification: true,
     clarifying_question:
       "Could you clarify what specific aspect you'd like to explore in the Quran?",
-    answer: '',
-    summary: '',
+    answer: "",
+    summary: "",
     citations: [],
     limitations: null,
-    confidence: 'low',
+    confidence: "low",
   });
-  output._debug = { prompt_type: 'clarification', prompt_sent: prompt, model: MODEL, raw_response: raw };
+  output._debug = {
+    prompt_type: "clarification",
+    prompt_sent: prompt,
+    model,
+    raw_response: raw,
+  };
   return output;
 }
 
@@ -185,15 +285,17 @@ export async function generateClarificationQuestion(
 
 function buildVersePrompt(ayah: AyahRow, related: AyahRow[]): string {
   const relatedText = related
-    .map((a) => `[${a.reference}] "${truncate(a.display_text, MAX_AYAH_CHARS)}"`)
-    .join('\n');
+    .map(
+      (a) => `[${a.reference}] "${truncate(a.display_text, MAX_AYAH_CHARS)}"`,
+    )
+    .join("\n");
 
   return `You are QuranSays. Explain the following Quran ayah concisely (2-3 sentences).
 
 AYAH: [${ayah.reference}] "${truncate(ayah.display_text, 300)}"
 
 RELATED AYAHS (for cross-reference only):
-${relatedText || '(none)'}
+${relatedText || "(none)"}
 
 Return ONLY valid JSON (no markdown fences) matching this schema:
 
@@ -206,41 +308,34 @@ Return ONLY valid JSON (no markdown fences) matching this schema:
 
 export async function generateVerseExplanation(
   ayah: AyahRow,
-  related: AyahRow[]
+  related: AyahRow[],
+  settings?: ProviderSettings,
 ): Promise<LLMVerseOutput> {
   const prompt = buildVersePrompt(ayah, related);
-  const raw = await callLLM(prompt);
+  const raw = await callLLM(prompt, settings);
   return parseWithRepair<LLMVerseOutput>(raw, {
-    explanation: 'Unable to generate explanation.',
-    surah_context: '',
+    explanation: "Unable to generate explanation.",
+    surah_context: "",
     related_references: [],
   });
 }
 
 // ---------- Shared helpers ------------------------------------------------
 
-async function callLLM(prompt: string): Promise<string> {
-  const msg = await client().messages.create({
-    model: MODEL,
-    max_tokens: 3000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-
-  const block = msg.content.find((b) => b.type === 'text');
-  return block?.type === 'text' ? block.text : '';
-}
-
 function parseWithRepair<T>(raw: string, fallback: T): T {
   // Strip optional markdown code fences
-  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '').trim();
+  const cleaned = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/i, "")
+    .trim();
 
   // First attempt
   try {
     return JSON.parse(cleaned) as T;
   } catch {
     // Repair attempt: find first { and last }
-    const start = cleaned.indexOf('{');
-    const end = cleaned.lastIndexOf('}');
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
     if (start !== -1 && end !== -1 && end > start) {
       try {
         return JSON.parse(cleaned.slice(start, end + 1)) as T;
@@ -248,7 +343,38 @@ function parseWithRepair<T>(raw: string, fallback: T): T {
         // fall through
       }
     }
-    console.error('[LLM] parse failed, using fallback. Raw preview:', raw.slice(0, 200));
+    console.error(
+      "[LLM] parse failed, using fallback. Raw preview:",
+      raw.slice(0, 200),
+    );
     return fallback;
+  }
+}
+
+// ---------- Query reformulation -------------------------------------------
+
+const REFORMULATION_PROMPT = (raw: string) =>
+  `You are a search-query optimizer for a Quranic knowledge base.
+Rewrite the user question below into a rich, specific retrieval query that maximises recall of relevant Quran verses. 
+Rules:
+- Expand abbreviations and add relevant Islamic terminology
+- Make implicit concepts explicit (e.g. "be patient" → "patience perseverance sabr hardship")
+- Keep the output under 40 words
+- Return ONLY the rewritten query — no explanation, no punctuation beyond the query itself
+
+User question: "${raw}"`;
+
+/**
+ * Rewrites a short user question into a richer semantic search query.
+ * Always uses the default (minimax) model regardless of user provider choice.
+ * Returns the original question unchanged if reformulation fails.
+ */
+export async function reformulateQuery(raw: string): Promise<string> {
+  try {
+    const result = await callLLM(REFORMULATION_PROMPT(raw));
+    const cleaned = result.trim().replace(/^["']|["']$/g, "");
+    return cleaned || raw;
+  } catch {
+    return raw;
   }
 }
