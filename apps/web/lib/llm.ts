@@ -16,8 +16,10 @@ const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? "minimax-m2.5-free";
 function getClient(
   settings?: ProviderSettings,
 ): { callText: (prompt: string, temp: number) => Promise<string> } {
-  if (!settings) {
+  if (!settings || settings.provider === "opencode") {
     // Default: minimax via opencode.ai using Anthropic SDK
+    const model =
+      settings?.provider === "opencode" ? settings.model : DEFAULT_MODEL;
     const anthropic = new Anthropic({
       baseURL: process.env.ANTHROPIC_BASE_URL ?? "https://opencode.ai/zen",
       apiKey: process.env.ANTHROPIC_API_KEY ?? "",
@@ -25,7 +27,7 @@ function getClient(
     return {
       callText: async (prompt, temp) => {
         const msg = await anthropic.messages.create({
-          model: DEFAULT_MODEL,
+          model,
           max_tokens: 3000,
           temperature: temp,
           messages: [{ role: "user", content: prompt }],

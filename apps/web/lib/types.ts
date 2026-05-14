@@ -2,7 +2,7 @@
 
 // ---- Provider / LLM settings ----
 
-export type LLMProvider = 'claude' | 'openai' | 'openrouter';
+export type LLMProvider = 'opencode' | 'claude' | 'openai' | 'openrouter';
 
 export interface ProviderSettings {
   provider: LLMProvider;
@@ -12,6 +12,7 @@ export interface ProviderSettings {
 }
 
 export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
+  opencode: ['minimax-m2.5-free'],
   claude: ['claude-opus-4-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1'],
   openrouter: [
@@ -23,8 +24,8 @@ export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
 };
 
 export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
-  provider: 'claude',
-  model: 'claude-sonnet-4-6',
+  provider: 'opencode',
+  model: 'minimax-m2.5-free',
   temperature: 0.7,
 };
 

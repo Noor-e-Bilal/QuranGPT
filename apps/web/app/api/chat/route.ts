@@ -216,7 +216,7 @@ function isProviderSettings(v: unknown): v is ProviderSettings {
   if (!v || typeof v !== 'object') return false;
   const p = v as Record<string, unknown>;
   return (
-    (p.provider === 'claude' || p.provider === 'openai' || p.provider === 'openrouter') &&
+    (p.provider === 'opencode' || p.provider === 'claude' || p.provider === 'openai' || p.provider === 'openrouter') &&
     typeof p.model === 'string' &&
     p.model.length > 0 &&
     typeof p.temperature === 'number'
