@@ -303,6 +303,25 @@ export default function ChatPage() {
                       {msg.data.confidence}
                     </span>
                     <span className="text-[10px] text-slate-500">{msg.data.source_policy}</span>
+                    {msg.data.cache_info && msg.data.cache_info.strategy !== 'miss' && (
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                          msg.data.cache_info.strategy === 'exact'
+                            ? 'bg-green-900/60 text-green-300'
+                            : 'bg-sky-900/60 text-sky-300'
+                        }`}
+                        title={
+                          msg.data.cache_info.strategy === 'semantic'
+                            ? `Semantic cache hit — ${(msg.data.cache_info.similarity! * 100).toFixed(1)}% match`
+                            : 'Exact cache hit'
+                        }
+                      >
+                        ⚡{' '}
+                        {msg.data.cache_info.strategy === 'semantic'
+                          ? `cache ~${(msg.data.cache_info.similarity! * 100).toFixed(0)}%`
+                          : 'cached'}
+                      </span>
+                    )}
                     {msg.data.limitations && (
                       <span className="text-[10px] text-amber-400">⚠ {msg.data.limitations}</span>
                     )}

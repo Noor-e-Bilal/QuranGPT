@@ -65,6 +65,16 @@ export interface Citation {
   quote: string;
 }
 
+/** Describes how a response was served relative to the semantic cache. */
+export interface CacheInfo {
+  /** 'exact' = in-memory exact key hit, 'semantic' = embedding similarity hit, 'miss' = cache miss */
+  strategy: 'exact' | 'semantic' | 'miss';
+  /** Cosine similarity [0..1] to the matched cached question. Only set for 'semantic' hits. */
+  similarity?: number;
+  /** The original question that was cached. Only set for 'semantic' hits. */
+  matched_question?: string;
+}
+
 export interface ChatResponse {
   needs_clarification?: boolean;
   clarifying_question?: string | null;
@@ -77,6 +87,8 @@ export interface ChatResponse {
   request_id: string;
   /** Original question reformulated for retrieval (shown in UI). */
   reformulated_query?: string;
+  /** Cache strategy used to serve this response. */
+  cache_info?: CacheInfo;
   /** Present only in development mode. */
   debug?: DebugInfo;
 }
@@ -133,7 +145,9 @@ export interface DebugInfo {
   enriched_query: string;
   clarification_round: number;
   safety_valve: boolean;
+  /** Deprecated boolean kept for backward compat. Prefer cache_info. */
   cache_hit: boolean;
+  cache_info: CacheInfo;
   provider_settings?: Pick<ProviderSettings, 'provider' | 'model'>;
   retrieval: RetrievalDebug;
   llm: LLMCallDebug;

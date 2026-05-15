@@ -59,6 +59,30 @@ function CurrentTab({ debug }: { debug: DebugInfo }) {
         <KV k="Clarification Round" v={debug.clarification_round} />
         <KV k="Safety Valve" v={String(debug.safety_valve)} />
         <KV k="Cache Hit" v={String(debug.cache_hit)} />
+        {debug.cache_info && (
+          <>
+            <div className="flex gap-2 flex-wrap items-center">
+              <span className="text-slate-500 shrink-0 w-36">Cache Strategy</span>
+              <span
+                className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase tracking-wide ${
+                  debug.cache_info.strategy === 'exact'
+                    ? 'bg-green-900/60 text-green-300'
+                    : debug.cache_info.strategy === 'semantic'
+                    ? 'bg-sky-900/60 text-sky-300'
+                    : 'bg-slate-800 text-slate-500'
+                }`}
+              >
+                {debug.cache_info.strategy}
+              </span>
+            </div>
+            {debug.cache_info.similarity !== undefined && (
+              <KV k="Cache Similarity" v={`${(debug.cache_info.similarity * 100).toFixed(1)}%`} mono />
+            )}
+            {debug.cache_info.matched_question && (
+              <KV k="Matched Question" v={debug.cache_info.matched_question} />
+            )}
+          </>
+        )}
         <KV k="Original Question" v={debug.original_question} />
         {debug.reformulated_query && (
           <KV k="Reformulated Query" v={debug.reformulated_query} />

@@ -3,8 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { retrieve } from '@/lib/retrieval';
 import { generateChatResponse, generateClarificationQuestion } from '@/lib/llm';
 import { buildChatResponse, fallbackChatResponse } from '@/lib/validator';
-import { chatCache, normaliseCacheKey } from '@/lib/cache';
-import type { ApiError, DebugInfo, ProviderSettings } from '@/lib/types';
+import { lookupCache, storeCache } from '@/lib/cache';
+import type { ApiError, CacheInfo, DebugInfo, ProviderSettings } from '@/lib/types';
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 
@@ -106,11 +106,13 @@ export async function POST(req: NextRequest) {
     const clarificationRound = parseClarificationRound(question);
     const isClarificationTurn = clarificationRound > 0;
 
-    // Cache: only for original (non-clarification) questions
+    // Two-tier cache: only for original (non-clarification) questions
+    let cacheInfo: CacheInfo = { strategy: 'miss' };
     if (!isClarificationTurn) {
-      const cached = chatCache.get(normaliseCacheKey(question));
-      if (cached) {
-        return NextResponse.json({ ...cached, request_id: requestId, cached: true });
+      const { value, cacheInfo: info } = await lookupCache(question);
+      cacheInfo = info;
+      if (value) {
+        return NextResponse.json({ ...value, request_id: requestId, cache_info: cacheInfo });
       }
     }
 
@@ -132,6 +134,7 @@ export async function POST(req: NextRequest) {
         providerSettings,
       );
       const clarifyResponse = buildChatResponse(clarifyOutput, evidence, requestId);
+      clarifyResponse.cache_info = { strategy: 'miss' };
       if (IS_DEV && clarifyOutput._debug && evidence._debug) {
         const debug: DebugInfo = {
           timestamp: new Date().toISOString(),
@@ -141,6 +144,7 @@ export async function POST(req: NextRequest) {
           clarification_round: clarificationRound,
           safety_valve: false,
           cache_hit: false,
+          cache_info: { strategy: 'miss' },
           provider_settings: providerSettings
             ? { provider: providerSettings.provider, model: providerSettings.model }
             : undefined,
@@ -167,7 +171,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!isClarificationTurn && evidence.confidence === 'high' && !llmOutput.needs_clarification) {
-      chatCache.set(normaliseCacheKey(question), { ...response });
+      storeCache(question, { ...response });
     }
 
     if (IS_DEV && llmOutput._debug && evidence._debug) {
@@ -179,6 +183,7 @@ export async function POST(req: NextRequest) {
         clarification_round: clarificationRound,
         safety_valve: safetyValve,
         cache_hit: false,
+        cache_info: cacheInfo,
         provider_settings: providerSettings
           ? { provider: providerSettings.provider, model: providerSettings.model }
           : undefined,
@@ -188,6 +193,8 @@ export async function POST(req: NextRequest) {
       response.debug = debug;
     }
 
+    // Always include cache_info in the response
+    response.cache_info = cacheInfo;
     return NextResponse.json(response);
   } catch (err) {
     console.error('[/api/chat]', err);
