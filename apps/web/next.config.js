@@ -2,6 +2,7 @@
 const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['chromadb', '@xenova/transformers'],
+    instrumentationHook: true,
   },
 };
 

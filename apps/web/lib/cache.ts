@@ -1,12 +1,18 @@
 /**
  * Two-tier semantic cache for LLM responses.
  *
- * L1 — In-memory TtlCache: exact normalised-key lookup. O(1), ~5 min TTL.
+ * L1 — In-memory LruTtlCache: exact normalised-key lookup. O(1). 24-hour TTL.
+ *       Uses LRU eviction (Map insertion-order trick): on get(), key is deleted and
+ *       re-inserted so it moves to the tail. Eviction removes head (least recently used).
+ *
  * L2 — ChromaDB SemanticCache: embedding similarity lookup. Catches paraphrases.
  *       Returns a hit when cosine similarity >= SEMANTIC_CACHE_THRESHOLD (default 0.90).
  *
  * Every lookup returns a CacheLookupResult describing the strategy used, so the
  * debug panel can compare exact vs semantic vs miss across pipelines.
+ *
+ * Note on cosine formula: ChromaDB cosine space returns distance ∈ [0, 2], so
+ * similarity = 1 - distance/2 correctly maps to [0, 1].
  */
 
 import type { CacheInfo } from './types';
@@ -16,15 +22,22 @@ import {
   queryCacheEntry,
 } from './chroma';
 
-const TTL_MS = 5 * 60 * 1_000; // 5 minutes
-const MAX_ENTRIES = 500;
+// Quran answers don't go stale — use a long TTL to maximise hit rate
+const TTL_MS = 24 * 60 * 60 * 1_000; // 24 hours
+const MAX_ENTRIES = 1_000;
 
 interface CacheEntry<T> {
   value: T;
   expiresAt: number;
 }
 
-class TtlCache<T> {
+/**
+ * LRU + TTL cache.
+ * The JS Map guarantees insertion order. On each get() we delete-and-reinsert
+ * the entry, promoting it to the tail. Eviction always removes from the head —
+ * the entry that hasn't been accessed the longest.
+ */
+class LruTtlCache<T> {
   private map = new Map<string, CacheEntry<T>>();
 
   get(key: string): T | undefined {
@@ -34,20 +47,30 @@ class TtlCache<T> {
       this.map.delete(key);
       return undefined;
     }
+    // Move to tail (most-recently-used position)
+    this.map.delete(key);
+    this.map.set(key, entry);
     return entry.value;
   }
 
   set(key: string, value: T): void {
+    // Remove first so re-insert always goes to tail
+    this.map.delete(key);
     if (this.map.size >= MAX_ENTRIES) {
-      const oldest = this.map.keys().next().value;
-      if (oldest !== undefined) this.map.delete(oldest);
+      // Evict LRU entry (head of map)
+      const lruKey = this.map.keys().next().value;
+      if (lruKey !== undefined) this.map.delete(lruKey);
     }
     this.map.set(key, { value, expiresAt: Date.now() + TTL_MS });
+  }
+
+  get size(): number {
+    return this.map.size;
   }
 }
 
 // Singleton — Next.js module cache keeps this alive across requests
-export const chatCache = new TtlCache<object>();
+export const chatCache = new LruTtlCache<object>();
 
 /** Normalise a question for use as cache key. */
 export function normaliseCacheKey(question: string): string {
