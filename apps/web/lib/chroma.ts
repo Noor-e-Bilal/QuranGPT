@@ -22,6 +22,7 @@ function getExtractor(): Promise<ExtractorFn> {
     _smallExtractorPromise = import('@xenova/transformers').then(
       ({ pipeline, env }) => {
         env.useBrowserCache = false; // Node.js: use filesystem cache
+        env.cacheDir = '/root/.cache/huggingface'; // must match EFS mount in ecs.tf
         return pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5') as Promise<ExtractorFn>;
       }
     ).catch((err) => {
@@ -37,6 +38,7 @@ function getBaseExtractor(): Promise<ExtractorFn> {
     _baseExtractorPromise = import('@xenova/transformers').then(
       ({ pipeline, env }) => {
         env.useBrowserCache = false;
+        env.cacheDir = '/root/.cache/huggingface'; // must match EFS mount in ecs.tf
         return pipeline('feature-extraction', 'Xenova/bge-base-en-v1.5') as Promise<ExtractorFn>;
       }
     ).catch((err) => {

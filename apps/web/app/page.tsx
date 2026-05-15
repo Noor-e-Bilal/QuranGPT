@@ -6,6 +6,16 @@ import { PROVIDER_MODELS, DEFAULT_PROVIDER_SETTINGS } from '@/lib/types';
 import DebugPanel from './components/DebugPanel';
 import ComparisonView from './components/ComparisonView';
 
+function uuid(): string {
+  if (typeof crypto !== 'undefined' && typeof (crypto as Crypto).randomUUID === 'function') {
+    return (crypto as Crypto).randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    return (c === 'x' ? r : (r & 0x3) | 0x8).toString(16);
+  });
+}
+
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -75,7 +85,7 @@ export default function ChatPage() {
       ? `${currentClarification.originalQuestion} [User clarified: ${q}]`
       : q;
 
-    const userMsg: Message = { id: crypto.randomUUID(), role: 'user', content: q };
+    const userMsg: Message = { id: uuid(), role: 'user', content: q };
     setMessages((m) => [...m, userMsg]);
     setInput('');
     setPendingClarification(null);
@@ -128,7 +138,7 @@ export default function ChatPage() {
         setPendingClarification(currentClarification);
         setMessages((m) => [
           ...m,
-          { id: crypto.randomUUID(), role: 'assistant', content: err.error?.message ?? 'An error occurred.' },
+          { id: uuid(), role: 'assistant', content: err.error?.message ?? 'An error occurred.' },
         ]);
       } else {
         const data = json as ChatResponse;
@@ -138,7 +148,7 @@ export default function ChatPage() {
           setMessages((m) => [
             ...m,
             {
-              id: crypto.randomUUID(),
+              id: uuid(),
               role: 'assistant',
               content: data.clarifying_question!,
               data,
@@ -146,7 +156,7 @@ export default function ChatPage() {
             },
           ]);
         } else {
-          const msgId = crypto.randomUUID();
+          const msgId = uuid();
 
           if (compareMode) {
             // Compare mode: show left panel immediately, load right panel async
@@ -203,7 +213,7 @@ export default function ChatPage() {
       setPendingClarification(currentClarification);
       setMessages((m) => [
         ...m,
-        { id: crypto.randomUUID(), role: 'assistant', content: 'Network error. Please try again.' },
+        { id: uuid(), role: 'assistant', content: 'Network error. Please try again.' },
       ]);
     } finally {
       setLoadingPhase('idle');
