@@ -6,8 +6,8 @@
  *       (maxmemory-policy allkeys-lru). Survives Next.js process restarts.
  *       Falls back to in-memory LruTtlCache when Valkey is unavailable.
  *
- * L2 — ChromaDB SemanticCache: embedding similarity lookup. Catches paraphrases.
- *       Returns a hit when cosine similarity >= SEMANTIC_CACHE_THRESHOLD (0.90).
+ * L2 — ChromaDB SemanticCache: embedding similarity lookup (BGE-base, 768-dim).
+ *       Catches paraphrases. Returns a hit when cosine similarity >= SEMANTIC_CACHE_THRESHOLD (0.90).
  *
  * Every lookup returns a CacheLookupResult describing the strategy used, so the
  * debug panel can compare exact vs semantic vs miss across pipelines.
@@ -134,8 +134,10 @@ export interface CacheLookupResult {
 /**
  * Look up a question in both cache tiers.
  *
- * L1: Valkey GET (exact, ~1-5ms). Falls back to in-memory if Valkey unavailable.
- * L2: ChromaDB vector similarity on L1 miss (~50-150ms).
+ * L1a: in-memory LRU (sync, ~0ms) — fastest path, checked first.
+ * L1b: Valkey GET (exact, ~2ms) — checked on in-memory miss; critical after process restart.
+ *      Valkey hit also promotes to in-memory to short-circuit future lookups.
+ * L2:  ChromaDB vector similarity on L1 miss (~120-175ms with BGE-base).
  * Returns a miss descriptor if neither tier has a match.
  *
  * Safe to call always — all errors degrade gracefully, never throw.
@@ -143,16 +145,18 @@ export interface CacheLookupResult {
 export async function lookupCache(question: string): Promise<CacheLookupResult> {
   const key = normaliseCacheKey(question);
 
-  // L1: Valkey exact lookup
-  const valkeyHit = await valkeyGet(key);
-  if (valkeyHit) {
-    return { value: valkeyHit, cacheInfo: { strategy: 'exact' } };
-  }
-
-  // L1 fallback: in-memory (active when Valkey is unavailable or unset)
+  // L1a: in-memory (sync, ~0ms) — fastest path; always check first
   const memHit = _memCache.get(key);
   if (memHit) {
     return { value: memHit, cacheInfo: { strategy: 'exact' } };
+  }
+
+  // L1b: Valkey exact lookup (~2ms on hit; needed after process restarts)
+  const valkeyHit = await valkeyGet(key);
+  if (valkeyHit) {
+    // Promote back to in-memory so subsequent requests skip Valkey
+    _memCache.set(key, valkeyHit);
+    return { value: valkeyHit, cacheInfo: { strategy: 'exact' } };
   }
 
   // L2: semantic similarity via ChromaDB
