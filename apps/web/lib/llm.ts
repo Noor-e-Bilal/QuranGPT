@@ -91,7 +91,26 @@ async function callLLM(
   settings?: ProviderSettings,
 ): Promise<string> {
   const temp = settings?.temperature ?? 1.0;
-  return getClient(settings).callText(prompt, temp);
+  try {
+    return await getClient(settings).callText(prompt, temp);
+  } catch (err: unknown) {
+    const status = (err as Record<string, unknown>)?.status;
+    const isOpencode = !settings || settings.provider === "opencode";
+    const openaiKey = process.env.OPENAI_API_KEY?.trim();
+
+    if (status === 429 && isOpencode && openaiKey) {
+      // opencode.ai free-tier rate limits by IP — silently fall back to OpenAI
+      const msg = (err as Record<string, unknown>)?.message ?? "";
+      console.warn(`[llm] opencode.ai 429 (${msg}) — falling back to OpenAI`);
+      const fallback: ProviderSettings = {
+        provider: "openai",
+        model: process.env.OPENAI_FALLBACK_MODEL ?? "gpt-4o-mini",
+        temperature: temp,
+      };
+      return getClient(fallback).callText(prompt, temp);
+    }
+    throw err;
+  }
 }
 
 // ---------- Chat ----------------------------------------------------------
