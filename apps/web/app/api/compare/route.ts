@@ -3,10 +3,34 @@ import { v4 as uuidv4 } from 'uuid';
 import { retrieveRRF } from '@/lib/retrieval';
 import { generateChatResponse } from '@/lib/llm';
 import { buildChatResponse } from '@/lib/validator';
-import type { ApiError, ProviderSettings, ComparePanelResult, UpgradeDebugInfo } from '@/lib/types';
+import { normaliseCacheKey } from '@/lib/cache';
+import type { ApiError, ProviderSettings, ComparePanelResult, UpgradeDebugInfo, CacheInfo } from '@/lib/types';
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 const BASE_EMBEDDING_MODEL = 'BAAI/bge-base-en-v1.5';
+
+// ── In-process LRU cache for upgrade pipeline results ─────────────────────────
+// Separate from the chat cache — upgrade answers differ (BGE-base + RRF retrieval).
+// In-memory only; no ChromaDB/Valkey needed for a developer debug tool.
+const _upgradeCache = new Map<string, ComparePanelResult>();
+const UPGRADE_CACHE_MAX = 200;
+
+function upgradeCacheLookup(key: string): ComparePanelResult | null {
+  const hit = _upgradeCache.get(key);
+  if (!hit) return null;
+  // Promote to tail (LRU)
+  _upgradeCache.delete(key);
+  _upgradeCache.set(key, hit);
+  return hit;
+}
+
+function upgradeCacheStore(key: string, value: ComparePanelResult): void {
+  if (_upgradeCache.size >= UPGRADE_CACHE_MAX) {
+    const lruKey = _upgradeCache.keys().next().value;
+    if (lruKey !== undefined) _upgradeCache.delete(lruKey);
+  }
+  _upgradeCache.set(key, value);
+}
 
 // Mirrors the rate limiter in /api/chat (10 req/min per IP)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -94,6 +118,19 @@ export async function POST(req: NextRequest) {
 
   const retrievalQuery = reformulatedQuery ?? buildRetrievalQuery(question);
 
+  // ── Upgrade cache lookup ────────────────────────────────────────────────────
+  // Key includes retrievalQuery (post-reformulation) + provider/model so different
+  // settings or reformulations don't collide on the same raw question.
+  const providerKey = providerSettings
+    ? `${providerSettings.provider}|${providerSettings.model}`
+    : 'default';
+  const cacheKey = `${normaliseCacheKey(retrievalQuery)}|${providerKey}`;
+  const cachedResult = upgradeCacheLookup(cacheKey);
+  if (cachedResult) {
+    const cacheInfo: CacheInfo = { strategy: 'exact' };
+    return NextResponse.json({ ...cachedResult, cache_info: cacheInfo, request_id: requestId });
+  }
+
   try {
     // Upgrade pipeline: BGE-base embeddings + Reciprocal Rank Fusion
     const { bundle, rrfScores } = await retrieveRRF(retrievalQuery);
@@ -112,6 +149,7 @@ export async function POST(req: NextRequest) {
       confidence: chatResponse.confidence,
       source_policy: chatResponse.source_policy,
       reformulated_query: reformulatedQuery,
+      cache_info: { strategy: 'miss' },
     };
 
     if (IS_DEV && llmOutput._debug) {
@@ -128,6 +166,19 @@ export async function POST(req: NextRequest) {
       };
       result.debug = upgradeDebug;
     }
+
+    // Store clean copy (no debug, no cache_info) so cache hits are lean
+    upgradeCacheStore(cacheKey, {
+      label: result.label,
+      formula: result.formula,
+      answer: result.answer,
+      summary: result.summary,
+      citations: result.citations,
+      limitations: result.limitations,
+      confidence: result.confidence,
+      source_policy: result.source_policy,
+      reformulated_query: result.reformulated_query,
+    });
 
     return NextResponse.json(result);
   } catch (err) {

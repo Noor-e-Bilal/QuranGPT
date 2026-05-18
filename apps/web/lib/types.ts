@@ -239,6 +239,8 @@ export interface ComparePanelResult {
   confidence: RetrievalConfidence;
   source_policy: string;
   reformulated_query?: string;
+  /** Cache hit metadata — always present in API response. */
+  cache_info?: CacheInfo;
   /** Present only in development mode. */
   debug?: UpgradeDebugInfo;
 }

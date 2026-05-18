@@ -1,6 +1,6 @@
 'use client';
 
-import type { ChatResponse, ComparePanelResult, RetrievalConfidence } from '@/lib/types';
+import type { ChatResponse, ComparePanelResult, RetrievalConfidence, CacheInfo } from '@/lib/types';
 
 // ── Shared sub-components ────────────────────────────────────────────────────
 
@@ -27,6 +27,7 @@ interface PanelData {
   confidence: RetrievalConfidence;
   source_policy: string;
   reformulated_query?: string;
+  cache_info?: CacheInfo;
 }
 
 function AnswerPanel({
@@ -128,6 +129,25 @@ function AnswerPanel({
             <div className="flex items-center gap-2 flex-wrap mt-auto pt-1">
               <ConfidenceBadge confidence={data.confidence} />
               <span className="text-[10px] text-slate-500">{data.source_policy}</span>
+              {data.cache_info && data.cache_info.strategy !== 'miss' && (
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                    data.cache_info.strategy === 'semantic'
+                      ? 'bg-sky-900/60 text-sky-300'
+                      : 'bg-green-900/60 text-green-300'
+                  }`}
+                  title={
+                    data.cache_info.strategy === 'semantic'
+                      ? `Semantic cache hit — ${((data.cache_info.similarity ?? 0) * 100).toFixed(1)}% match`
+                      : 'Exact cache hit'
+                  }
+                >
+                  ⚡{' '}
+                  {data.cache_info.strategy === 'semantic'
+                    ? `cache ~${((data.cache_info.similarity ?? 0) * 100).toFixed(0)}%`
+                    : 'cached'}
+                </span>
+              )}
               {data.limitations && (
                 <span className="text-[10px] text-amber-400 w-full">⚠ {data.limitations}</span>
               )}
@@ -165,6 +185,7 @@ export default function ComparisonView({ left, leftReformulatedQuery, right, rig
     confidence: left.confidence,
     source_policy: left.source_policy,
     reformulated_query: leftReformulatedQuery ?? left.reformulated_query,
+    cache_info: left.cache_info,
   };
 
   return (
