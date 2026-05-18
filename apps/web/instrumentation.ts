@@ -23,10 +23,9 @@ export async function register() {
     // Only override cacheDir when the ECS EFS mount path actually exists;
     // locally it doesn't exist and Xenova should use its default package cache.
     xen.env.useBrowserCache = false;
-    // Dynamic require('fs') — safe here because we're inside the 'nodejs' runtime guard.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { existsSync } = require('fs') as { existsSync: (p: string) => boolean };
-    if (existsSync(ECS_CACHE_DIR)) {
+    // Only override cacheDir in ECS (AWS_EXECUTION_ENV is set in all ECS task environments).
+    // Locally it's unset, so Xenova uses its default node_modules cache — no filesystem check needed.
+    if (process.env.AWS_EXECUTION_ENV) {
       xen.env.cacheDir = ECS_CACHE_DIR;
     }
 
