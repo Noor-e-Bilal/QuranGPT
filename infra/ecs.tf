@@ -67,6 +67,35 @@ resource "aws_ecs_task_definition" "app" {
       }
     },
 
+    # ── Valkey sidecar (L1 cache) ─────────────────────────────────────────────
+    # Redis-compatible in-task KV store. Survives Next.js process restarts within
+    # a task lifetime. maxmemory-policy allkeys-lru handles eviction server-side.
+    # Non-essential: if Valkey crashes, the web container falls back to in-memory.
+    {
+      name      = "valkey"
+      image     = "valkey/valkey:7.2-alpine"
+      essential = false
+
+      portMappings = [{ containerPort = 6379, protocol = "tcp" }]
+
+      command = [
+        "valkey-server",
+        "--maxmemory", "256mb",
+        "--maxmemory-policy", "allkeys-lru",
+        "--save", "",          # disable RDB snapshots — ephemeral is intentional
+        "--appendonly", "no",  # disable AOF — same reason
+      ]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.valkey.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "valkey"
+        }
+      }
+    },
+
     # ── ChromaDB sidecar ──────────────────────────────────────────────────────
     {
       name      = "chroma"
@@ -119,6 +148,7 @@ resource "aws_ecs_task_definition" "app" {
         { name = "NODE_ENV",           value = "production" },
         { name = "PORT",               value = "3000" },
         { name = "CHROMA_URL",         value = "http://localhost:8000" },
+        { name = "VALKEY_URL",         value = "redis://localhost:6379" },
         # DB_PATH is set as ENV in the Dockerfile (/app/data/quran.db, bundled in image)
         { name = "ANTHROPIC_BASE_URL", value = "https://opencode.ai/zen" },
         { name = "ANTHROPIC_MODEL",    value = "minimax-m2.5-free" },

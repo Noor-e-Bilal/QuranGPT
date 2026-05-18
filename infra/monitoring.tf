@@ -8,6 +8,11 @@ resource "aws_cloudwatch_log_group" "chroma" {
   retention_in_days = 14
 }
 
+resource "aws_cloudwatch_log_group" "valkey" {
+  name              = "/ecs/${local.prefix}-valkey"
+  retention_in_days = 7
+}
+
 # ── Optional: ALB 5xx alarm ───────────────────────────────────────────────────
 # Uncomment and add an SNS topic (var.alert_sns_arn) to receive email alerts.
 #

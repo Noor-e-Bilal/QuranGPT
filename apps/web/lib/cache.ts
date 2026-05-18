@@ -1,12 +1,13 @@
 /**
  * Two-tier semantic cache for LLM responses.
  *
- * L1 — In-memory LruTtlCache: exact normalised-key lookup. O(1). 24-hour TTL.
- *       Uses LRU eviction (Map insertion-order trick): on get(), key is deleted and
- *       re-inserted so it moves to the tail. Eviction removes head (least recently used).
+ * L1 — Valkey (Redis-compatible) KV store: exact normalised-key lookup, ~1-5ms.
+ *       Set via VALKEY_URL env var. TTL and LRU eviction are handled server-side
+ *       (maxmemory-policy allkeys-lru). Survives Next.js process restarts.
+ *       Falls back to in-memory LruTtlCache when Valkey is unavailable.
  *
  * L2 — ChromaDB SemanticCache: embedding similarity lookup. Catches paraphrases.
- *       Returns a hit when cosine similarity >= SEMANTIC_CACHE_THRESHOLD (default 0.90).
+ *       Returns a hit when cosine similarity >= SEMANTIC_CACHE_THRESHOLD (0.90).
  *
  * Every lookup returns a CacheLookupResult describing the strategy used, so the
  * debug panel can compare exact vs semantic vs miss across pipelines.
@@ -21,22 +22,23 @@ import {
   storeCacheEntry,
   queryCacheEntry,
 } from './chroma';
+import Redis from 'ioredis';
 
-// Quran answers don't go stale — use a long TTL to maximise hit rate
-const TTL_MS = 24 * 60 * 60 * 1_000; // 24 hours
-const MAX_ENTRIES = 1_000;
+// ── Configuration ─────────────────────────────────────────────────────────────
+const TTL_MS = 24 * 60 * 60 * 1_000;   // 24h — in-memory fallback
+const TTL_SEC = 24 * 60 * 60;           // 24h — Valkey SETEX
+const MAX_ENTRIES = 1_000;              // in-memory fallback capacity
+const VALKEY_KEY_PREFIX = 'qs:cache:';
+const VALKEY_CMD_TIMEOUT_MS = 200;      // fail-fast; never block a response
+
+// ── In-memory LRU+TTL fallback ─────────────────────────────────────────────────
+// Used when VALKEY_URL is not set (local dev) or Valkey is unreachable.
 
 interface CacheEntry<T> {
   value: T;
   expiresAt: number;
 }
 
-/**
- * LRU + TTL cache.
- * The JS Map guarantees insertion order. On each get() we delete-and-reinsert
- * the entry, promoting it to the tail. Eviction always removes from the head —
- * the entry that hasn't been accessed the longest.
- */
 class LruTtlCache<T> {
   private map = new Map<string, CacheEntry<T>>();
 
@@ -47,17 +49,15 @@ class LruTtlCache<T> {
       this.map.delete(key);
       return undefined;
     }
-    // Move to tail (most-recently-used position)
+    // Promote to tail (most-recently-used)
     this.map.delete(key);
     this.map.set(key, entry);
     return entry.value;
   }
 
   set(key: string, value: T): void {
-    // Remove first so re-insert always goes to tail
     this.map.delete(key);
     if (this.map.size >= MAX_ENTRIES) {
-      // Evict LRU entry (head of map)
       const lruKey = this.map.keys().next().value;
       if (lruKey !== undefined) this.map.delete(lruKey);
     }
@@ -69,15 +69,60 @@ class LruTtlCache<T> {
   }
 }
 
-// Singleton — Next.js module cache keeps this alive across requests
-export const chatCache = new LruTtlCache<object>();
+// Singleton — kept alive across requests in the same Next.js process
+const _memCache = new LruTtlCache<object>();
 
-/** Normalise a question for use as cache key. */
+// Backward-compat export for any direct callers
+export const chatCache = _memCache;
+
+// ── Valkey client ──────────────────────────────────────────────────────────────
+
+let _valkeyClient: Redis | null = null;
+
+function getValkeyClient(): Redis | null {
+  const url = process.env.VALKEY_URL;
+  if (!url) return null;
+  if (_valkeyClient) return _valkeyClient;
+
+  _valkeyClient = new Redis(url, {
+    lazyConnect: false,
+    maxRetriesPerRequest: 0,    // fail fast per command — fallback to in-memory
+    enableOfflineQueue: false,  // reject commands immediately when disconnected
+    connectTimeout: 1_000,
+    commandTimeout: VALKEY_CMD_TIMEOUT_MS,
+  });
+
+  // Suppress unhandled error events — failures are handled at call sites
+  _valkeyClient.on('error', () => {});
+
+  return _valkeyClient;
+}
+
+async function valkeyGet(key: string): Promise<object | null> {
+  const client = getValkeyClient();
+  if (!client) return null;
+  try {
+    const raw = await client.get(VALKEY_KEY_PREFIX + key);
+    return raw ? (JSON.parse(raw) as object) : null;
+  } catch {
+    return null;
+  }
+}
+
+function valkeySet(key: string, value: object): void {
+  const client = getValkeyClient();
+  if (!client) return;
+  // Fire-and-forget — cache write never delays a response
+  client.setex(VALKEY_KEY_PREFIX + key, TTL_SEC, JSON.stringify(value)).catch(() => {});
+}
+
+// ── Normalisation ──────────────────────────────────────────────────────────────
+
 export function normaliseCacheKey(question: string): string {
   return question.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-// ---------- Two-tier lookup result ------------------------------------------
+// ── Two-tier lookup result ─────────────────────────────────────────────────────
 
 export interface CacheLookupResult {
   /** The cached response object, or null on miss. */
@@ -89,19 +134,25 @@ export interface CacheLookupResult {
 /**
  * Look up a question in both cache tiers.
  *
- * Returns immediately on L1 hit (no embedding cost).
- * Falls through to L2 (ChromaDB vector search) on L1 miss.
+ * L1: Valkey GET (exact, ~1-5ms). Falls back to in-memory if Valkey unavailable.
+ * L2: ChromaDB vector similarity on L1 miss (~50-150ms).
  * Returns a miss descriptor if neither tier has a match.
  *
- * Safe to call always — L2 errors degrade to miss, never throw.
+ * Safe to call always — all errors degrade gracefully, never throw.
  */
 export async function lookupCache(question: string): Promise<CacheLookupResult> {
   const key = normaliseCacheKey(question);
 
-  // L1: exact in-memory
-  const l1 = chatCache.get(key);
-  if (l1) {
-    return { value: l1, cacheInfo: { strategy: 'exact' } };
+  // L1: Valkey exact lookup
+  const valkeyHit = await valkeyGet(key);
+  if (valkeyHit) {
+    return { value: valkeyHit, cacheInfo: { strategy: 'exact' } };
+  }
+
+  // L1 fallback: in-memory (active when Valkey is unavailable or unset)
+  const memHit = _memCache.get(key);
+  if (memHit) {
+    return { value: memHit, cacheInfo: { strategy: 'exact' } };
   }
 
   // L2: semantic similarity via ChromaDB
@@ -110,8 +161,9 @@ export async function lookupCache(question: string): Promise<CacheLookupResult> 
     const hit = await queryCacheEntry(embedding);
     if (hit) {
       const parsed = JSON.parse(hit.answerJson) as object;
-      // Promote to L1 so the next identical request is O(1)
-      chatCache.set(key, parsed);
+      // Promote L2 hit to L1 so the next identical request is O(1)
+      valkeySet(key, parsed);
+      _memCache.set(key, parsed);
       return {
         value: parsed,
         cacheInfo: {
@@ -130,16 +182,19 @@ export async function lookupCache(question: string): Promise<CacheLookupResult> 
 
 /**
  * Store an answer in both cache tiers.
- * L1 is synchronous; L2 (ChromaDB) is fire-and-forget.
+ * L1 (Valkey + in-memory) is fire-and-forget; L2 (ChromaDB) is fire-and-forget.
+ * Never blocks — the response has already been sent when this is called.
  */
 export function storeCache(question: string, value: object): void {
   const key = normaliseCacheKey(question);
 
-  // L1 — synchronous
-  chatCache.set(key, value);
+  // L1 — Valkey (primary) and in-memory (fallback)
+  valkeySet(key, value);
+  _memCache.set(key, value);
 
   // L2 — async, fire-and-forget
   embedCacheQuestion(key)
     .then((embedding) => storeCacheEntry(key, embedding, JSON.stringify(value)))
     .catch(() => { /* non-fatal */ });
 }
+
