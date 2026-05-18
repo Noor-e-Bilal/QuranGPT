@@ -12,7 +12,7 @@ const BGE_QUERY_PREFIX =
 
 let _client: ChromaClient | null = null;
 
-type ExtractorFn = (text: string, opts: Record<string, unknown>) => Promise<{ data: Float32Array }>;
+type ExtractorFn = (text: string | string[], opts: Record<string, unknown>) => Promise<{ data: Float32Array }>;
 
 // Lazy-loaded singleton extractors — each model downloads once on first use
 let _smallExtractorPromise: Promise<ExtractorFn> | null = null;
@@ -50,22 +50,77 @@ function getBaseExtractor(): Promise<ExtractorFn> {
   return _baseExtractorPromise;
 }
 
-async function embedQuery(text: string): Promise<number[]> {
-  const extractor = await getExtractor();
-  const output = await extractor(BGE_QUERY_PREFIX + text, {
-    pooling: 'mean',
-    normalize: true,
-  });
-  return Array.from(output.data);
+// ── Embed micro-batching ───────────────────────────────────────────────────────
+// Requests that arrive within the same event-loop phase (BATCH_WINDOW_MS = 0 → the
+// next macrotask boundary) are coalesced into one ONNX forward pass.
+//
+// Why this works for concurrent HTTP traffic:
+//   10 requests → all await Valkey (~2ms) → all Valkey promises resolve in one
+//   TCP read → all continuations run in one event-loop turn → all call embed in
+//   the same tick → one ONNX batch of 10 (≈120ms) instead of 10 serial calls
+//   (≈1,000ms for the 10th user).
+//
+// Single-user: batch of 1 → identical to the old per-call path.
+
+const SMALL_DIM = 384;
+const BASE_DIM = 768;
+const BATCH_WINDOW_MS = 0;
+
+interface BatchEntry {
+  text: string;
+  resolve: (v: number[]) => void;
+  reject: (err: unknown) => void;
 }
 
-async function embedQueryBase(text: string): Promise<number[]> {
-  const extractor = await getBaseExtractor();
-  const output = await extractor(BGE_QUERY_PREFIX + text, {
-    pooling: 'mean',
-    normalize: true,
+let _smallBatchQueue: BatchEntry[] = [];
+let _smallBatchTimer: ReturnType<typeof setTimeout> | null = null;
+let _baseBatchQueue: BatchEntry[] = [];
+let _baseBatchTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function _flushSmallBatch(): Promise<void> {
+  const batch = _smallBatchQueue.splice(0);
+  if (batch.length === 0) return;
+  try {
+    const extractor = await getExtractor();
+    const output = await extractor(batch.map(b => b.text), { pooling: 'mean', normalize: true });
+    batch.forEach((b, i) =>
+      b.resolve(Array.from(output.data.slice(i * SMALL_DIM, (i + 1) * SMALL_DIM))),
+    );
+  } catch (err) {
+    batch.forEach(b => b.reject(err));
+  }
+}
+
+async function _flushBaseBatch(): Promise<void> {
+  const batch = _baseBatchQueue.splice(0);
+  if (batch.length === 0) return;
+  try {
+    const extractor = await getBaseExtractor();
+    const output = await extractor(batch.map(b => b.text), { pooling: 'mean', normalize: true });
+    batch.forEach((b, i) =>
+      b.resolve(Array.from(output.data.slice(i * BASE_DIM, (i + 1) * BASE_DIM))),
+    );
+  } catch (err) {
+    batch.forEach(b => b.reject(err));
+  }
+}
+
+function embedQuery(text: string): Promise<number[]> {
+  return new Promise<number[]>((resolve, reject) => {
+    _smallBatchQueue.push({ text: BGE_QUERY_PREFIX + text, resolve, reject });
+    if (!_smallBatchTimer) {
+      _smallBatchTimer = setTimeout(() => { _smallBatchTimer = null; void _flushSmallBatch(); }, BATCH_WINDOW_MS);
+    }
   });
-  return Array.from(output.data);
+}
+
+function embedQueryBase(text: string): Promise<number[]> {
+  return new Promise<number[]>((resolve, reject) => {
+    _baseBatchQueue.push({ text: BGE_QUERY_PREFIX + text, resolve, reject });
+    if (!_baseBatchTimer) {
+      _baseBatchTimer = setTimeout(() => { _baseBatchTimer = null; void _flushBaseBatch(); }, BATCH_WINDOW_MS);
+    }
+  });
 }
 
 // Stub EF — we always pass pre-computed queryEmbeddings, so this is never called
