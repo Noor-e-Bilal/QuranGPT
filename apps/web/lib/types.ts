@@ -12,7 +12,11 @@ export interface ProviderSettings {
 }
 
 export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
-  opencode: ['minimax-m2.5-free'],
+  opencode: [
+    'minimax-m2.5-free',
+    'deepseek-v4-flash-free',
+    'nemotron-3-super-free',
+  ],
   claude: ['claude-opus-4-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1'],
   openrouter: [

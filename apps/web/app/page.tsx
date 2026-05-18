@@ -391,7 +391,7 @@ export default function ChatPage() {
               onChange={(e) => handleProviderChange(e.target.value as ProviderSettings['provider'])}
               className="bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 outline-none focus:border-emerald-500"
             >
-              <option value="opencode">OpenCode (minimax)</option>
+              <option value="opencode">OpenCode.ai (free)</option>
               <option value="claude">Claude (Anthropic)</option>
               <option value="openai">OpenAI</option>
               <option value="openrouter">OpenRouter</option>
