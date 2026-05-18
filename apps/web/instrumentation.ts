@@ -9,6 +9,9 @@
  * Imports @xenova/transformers directly (not lib/chroma) to avoid pulling
  * chromadb's top-level imports into the instrumentation bundle.
  */
+
+const ECS_CACHE_DIR = '/root/.cache/huggingface';
+
 export async function register() {
   // Only run in the Node.js runtime (not Edge)
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
@@ -16,9 +19,16 @@ export async function register() {
   // Wrap everything — a failed pre-warm must NEVER crash the server
   try {
     const xen = await import('@xenova/transformers');
-    // Mirror the settings used in lib/chroma.ts
+    // Mirror the settings used in lib/chroma.ts.
+    // Only override cacheDir when the ECS EFS mount path actually exists;
+    // locally it doesn't exist and Xenova should use its default package cache.
     xen.env.useBrowserCache = false;
-    xen.env.cacheDir = '/root/.cache/huggingface';
+    // Dynamic require('fs') — safe here because we're inside the 'nodejs' runtime guard.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { existsSync } = require('fs') as { existsSync: (p: string) => boolean };
+    if (existsSync(ECS_CACHE_DIR)) {
+      xen.env.cacheDir = ECS_CACHE_DIR;
+    }
 
     const extractorSmall = await (xen.pipeline as Function)(
       'feature-extraction',

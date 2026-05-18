@@ -1,5 +1,6 @@
 import type { IEmbeddingFunction, Collection } from 'chromadb';
 import { ChromaClient } from 'chromadb';
+import { existsSync } from 'fs';
 
 const CHROMA_URL = process.env.CHROMA_URL ?? 'http://localhost:8000';
 const COLLECTION_NAME = 'quran_v2';           // BGE-small (384-dim)
@@ -14,6 +15,11 @@ let _client: ChromaClient | null = null;
 
 type ExtractorFn = (text: string | string[], opts: Record<string, unknown>) => Promise<{ data: Float32Array }>;
 
+// ECS mounts the HuggingFace model cache on EFS at this path.
+// Locally the path doesn't exist — fall back to Xenova's default (.cache/ in node_modules).
+const ECS_CACHE_DIR = '/root/.cache/huggingface';
+const HF_CACHE_DIR = existsSync(ECS_CACHE_DIR) ? ECS_CACHE_DIR : undefined;
+
 // Lazy-loaded singleton extractors — each model downloads once on first use
 let _smallExtractorPromise: Promise<ExtractorFn> | null = null;
 let _baseExtractorPromise: Promise<ExtractorFn> | null = null;
@@ -23,7 +29,7 @@ function getExtractor(): Promise<ExtractorFn> {
     _smallExtractorPromise = import('@xenova/transformers').then(
       ({ pipeline, env }) => {
         env.useBrowserCache = false; // Node.js: use filesystem cache
-        env.cacheDir = '/root/.cache/huggingface'; // must match EFS mount in ecs.tf
+        if (HF_CACHE_DIR) env.cacheDir = HF_CACHE_DIR;
         return pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5') as Promise<ExtractorFn>;
       }
     ).catch((err) => {
@@ -39,7 +45,7 @@ function getBaseExtractor(): Promise<ExtractorFn> {
     _baseExtractorPromise = import('@xenova/transformers').then(
       ({ pipeline, env }) => {
         env.useBrowserCache = false;
-        env.cacheDir = '/root/.cache/huggingface'; // must match EFS mount in ecs.tf
+        if (HF_CACHE_DIR) env.cacheDir = HF_CACHE_DIR;
         return pipeline('feature-extraction', 'Xenova/bge-base-en-v1.5') as Promise<ExtractorFn>;
       }
     ).catch((err) => {

@@ -182,7 +182,14 @@ export default function ChatPage() {
                 providerSettings,
               }),
             })
-              .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
+              .then(async (r) => {
+                const body = await r.json();
+                if (!r.ok) {
+                  const msg: string = (body as { error?: { message?: string } })?.error?.message ?? 'Upgrade pipeline failed.';
+                  return Promise.reject(msg);
+                }
+                return body as ComparePanelResult;
+              })
               .then((panel: ComparePanelResult) => {
                 setMessages((m) =>
                   m.map((msg) =>
@@ -192,11 +199,12 @@ export default function ChatPage() {
                   )
                 );
               })
-              .catch(() => {
+              .catch((errMsg: unknown) => {
+                const displayError = typeof errMsg === 'string' ? errMsg : 'Upgrade pipeline failed — try again.';
                 setMessages((m) =>
                   m.map((msg) =>
                     msg.id === msgId
-                      ? { ...msg, compareRightLoading: false, compareRightError: 'Upgrade pipeline failed — try again.' }
+                      ? { ...msg, compareRightLoading: false, compareRightError: displayError }
                       : msg
                   )
                 );

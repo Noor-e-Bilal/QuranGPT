@@ -132,6 +132,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result);
   } catch (err) {
     console.error('[/api/compare] error:', err);
+    // Anthropic SDK throws with .status = 429 on rate limit
+    const status = (err as Record<string, unknown>)?.status;
+    if (status === 429) {
+      const apiErr: ApiError = {
+        error: { code: 'RATE_LIMITED', message: 'LLM API rate limit reached — please wait a moment and try again.', request_id: requestId },
+      };
+      return NextResponse.json(apiErr, { status: 503 });
+    }
     const apiErr: ApiError = {
       error: { code: 'INTERNAL_ERROR', message: 'Comparison pipeline failed.', request_id: requestId },
     };
