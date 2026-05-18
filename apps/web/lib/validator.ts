@@ -94,3 +94,24 @@ export function fallbackChatResponse(requestId: string): ChatResponse {
     request_id: requestId,
   };
 }
+
+/**
+ * Returned when the user has gone through the maximum clarification rounds
+ * and retrieval still cannot reach high confidence. Rather than forcing a
+ * low-quality answer, we decline gracefully.
+ */
+export function maxRoundsDeclineResponse(requestId: string): ChatResponse {
+  return {
+    answer:
+      'After several rounds of clarification I still could not find specific enough ' +
+      'Quranic evidence to give a reliable answer. This topic may be too broad, or ' +
+      'The Clear Quran may not address it with enough specificity. ' +
+      'Please try asking about a narrower, more concrete aspect.',
+    summary: 'Insufficient evidence after maximum clarification rounds.',
+    citations: [],
+    limitations: null,
+    confidence: 'low',
+    source_policy: SOURCE_POLICY,
+    request_id: requestId,
+  };
+}

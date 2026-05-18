@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { retrieve } from '@/lib/retrieval';
 import { generateChatResponse, generateClarificationQuestion } from '@/lib/llm';
-import { buildChatResponse, fallbackChatResponse } from '@/lib/validator';
+import { buildChatResponse, fallbackChatResponse, maxRoundsDeclineResponse } from '@/lib/validator';
 import { lookupCache, storeCache } from '@/lib/cache';
 import type { ApiError, CacheInfo, DebugInfo, ProviderSettings } from '@/lib/types';
 
@@ -123,10 +123,16 @@ export async function POST(req: NextRequest) {
     const evidence = await retrieve(retrievalQuery);
 
     // ── Confidence gating ────────────────────────────────────────────────
-    const safetyValve =
-      clarificationRound >= MAX_CLARIFICATION_ROUNDS && evidence.confidence !== 'high';
+    // Only high-confidence retrievals produce an answer.
+    // medium/low → ask clarifying questions until MAX_CLARIFICATION_ROUNDS,
+    // then decline gracefully rather than force a low-quality answer.
+    if (evidence.confidence !== 'high') {
+      if (clarificationRound >= MAX_CLARIFICATION_ROUNDS) {
+        const decline = maxRoundsDeclineResponse(requestId);
+        decline.cache_info = { strategy: 'miss' };
+        return NextResponse.json(decline);
+      }
 
-    if (evidence.confidence !== 'high' && !safetyValve) {
       const clarifyOutput = await generateClarificationQuestion(
         question,
         evidence,
@@ -156,8 +162,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(clarifyResponse);
     }
 
-    // ── Answer path (HIGH confidence OR safety valve) ─────────────────────
-    const llmOutput = await generateChatResponse(question, evidence, safetyValve, providerSettings);
+    // ── Answer path (HIGH confidence only) ───────────────────────────────
+    const llmOutput = await generateChatResponse(question, evidence, false, providerSettings);
 
     if (evidence.hitCount === 0 && !llmOutput.needs_clarification) {
       return NextResponse.json(fallbackChatResponse(requestId));
@@ -165,12 +171,18 @@ export async function POST(req: NextRequest) {
 
     const response = buildChatResponse(llmOutput, evidence, requestId);
 
+    // Guard: if citation validation stripped all citations and downgraded confidence,
+    // treat as fallback rather than return a low-quality answer without signal.
+    if (response.confidence !== 'high') {
+      return NextResponse.json(fallbackChatResponse(requestId));
+    }
+
     // Attach reformulated query so UI can show "searched for: ..."
     if (reformulatedQuery) {
       response.reformulated_query = reformulatedQuery;
     }
 
-    if (!isClarificationTurn && evidence.confidence === 'high' && !llmOutput.needs_clarification) {
+    if (!isClarificationTurn && !llmOutput.needs_clarification) {
       storeCache(question, { ...response });
     }
 
@@ -181,7 +193,7 @@ export async function POST(req: NextRequest) {
         reformulated_query: reformulatedQuery,
         enriched_query: enrichedQuery,
         clarification_round: clarificationRound,
-        safety_valve: safetyValve,
+        safety_valve: false,
         cache_hit: false,
         cache_info: cacheInfo,
         provider_settings: providerSettings

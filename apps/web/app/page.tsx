@@ -291,17 +291,6 @@ export default function ChatPage() {
                 {/* Metadata */}
                 {msg.data && !msg.isClarification && (
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        msg.data.confidence === 'high'
-                          ? 'bg-green-700/50 text-green-300'
-                          : msg.data.confidence === 'medium'
-                          ? 'bg-yellow-700/50 text-yellow-300'
-                          : 'bg-red-700/50 text-red-300'
-                      }`}
-                    >
-                      {msg.data.confidence}
-                    </span>
                     <span className="text-[10px] text-slate-500">{msg.data.source_policy}</span>
                     {msg.data.cache_info && msg.data.cache_info.strategy !== 'miss' && (
                       <span
@@ -321,9 +310,6 @@ export default function ChatPage() {
                           ? `cache ~${(msg.data.cache_info.similarity! * 100).toFixed(0)}%`
                           : 'cached'}
                       </span>
-                    )}
-                    {msg.data.limitations && (
-                      <span className="text-[10px] text-amber-400">⚠ {msg.data.limitations}</span>
                     )}
                     {msg.data.debug && (
                       <div className="ml-auto">
