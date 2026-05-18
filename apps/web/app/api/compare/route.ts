@@ -3,34 +3,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { retrieveRRF } from '@/lib/retrieval';
 import { generateChatResponse } from '@/lib/llm';
 import { buildChatResponse } from '@/lib/validator';
-import { normaliseCacheKey } from '@/lib/cache';
-import type { ApiError, ProviderSettings, ComparePanelResult, UpgradeDebugInfo, CacheInfo } from '@/lib/types';
+import { lookupCache, storeCache } from '@/lib/cache';
+import type { ApiError, ProviderSettings, ComparePanelResult, UpgradeDebugInfo } from '@/lib/types';
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 const BASE_EMBEDDING_MODEL = 'BAAI/bge-base-en-v1.5';
 
-// ── In-process LRU cache for upgrade pipeline results ─────────────────────────
-// Separate from the chat cache — upgrade answers differ (BGE-base + RRF retrieval).
-// In-memory only; no ChromaDB/Valkey needed for a developer debug tool.
-const _upgradeCache = new Map<string, ComparePanelResult>();
-const UPGRADE_CACHE_MAX = 200;
-
-function upgradeCacheLookup(key: string): ComparePanelResult | null {
-  const hit = _upgradeCache.get(key);
-  if (!hit) return null;
-  // Promote to tail (LRU)
-  _upgradeCache.delete(key);
-  _upgradeCache.set(key, hit);
-  return hit;
-}
-
-function upgradeCacheStore(key: string, value: ComparePanelResult): void {
-  if (_upgradeCache.size >= UPGRADE_CACHE_MAX) {
-    const lruKey = _upgradeCache.keys().next().value;
-    if (lruKey !== undefined) _upgradeCache.delete(lruKey);
-  }
-  _upgradeCache.set(key, value);
-}
+// Namespace prefix keeps upgrade pipeline results separate from chat pipeline
+// entries in Valkey and ChromaDB. Both share the same lookupCache/storeCache
+// infrastructure (Valkey L1 + ChromaDB L2) so the cache survives server restarts.
+const UPGRADE_CACHE_PREFIX = 'upgrade:';
 
 // Mirrors the rate limiter in /api/chat (10 req/min per IP)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -119,16 +101,16 @@ export async function POST(req: NextRequest) {
   const retrievalQuery = reformulatedQuery ?? buildRetrievalQuery(question);
 
   // ── Upgrade cache lookup ────────────────────────────────────────────────────
-  // Key includes retrievalQuery (post-reformulation) + provider/model so different
-  // settings or reformulations don't collide on the same raw question.
-  const providerKey = providerSettings
-    ? `${providerSettings.provider}|${providerSettings.model}`
-    : 'default';
-  const cacheKey = `${normaliseCacheKey(retrievalQuery)}|${providerKey}`;
-  const cachedResult = upgradeCacheLookup(cacheKey);
-  if (cachedResult) {
-    const cacheInfo: CacheInfo = { strategy: 'exact' };
-    return NextResponse.json({ ...cachedResult, cache_info: cacheInfo, request_id: requestId });
+  // Key: 'upgrade:' + original question (stable, not reformulated_query which
+  // is LLM-generated and non-deterministic). lookupCache uses Valkey (persistent
+  // across process restarts) + in-memory LRU fallback — same as chat pipeline.
+  const upgradeKey = UPGRADE_CACHE_PREFIX + question;
+  const { value: cacheHit, cacheInfo } = await lookupCache(upgradeKey);
+  // Guard against L2 semantic cross-namespace collision: ChromaDB has no namespace
+  // filter, so "upgrade:X" could match the chat-cached "X" and return a ChatResponse.
+  // Check label to confirm the hit is actually an upgrade pipeline result.
+  if (cacheHit && (cacheHit as Record<string, unknown>).label === 'Upgrade') {
+    return NextResponse.json({ ...(cacheHit as ComparePanelResult), cache_info: cacheInfo, request_id: requestId });
   }
 
   try {
@@ -167,8 +149,8 @@ export async function POST(req: NextRequest) {
       result.debug = upgradeDebug;
     }
 
-    // Store clean copy (no debug, no cache_info) so cache hits are lean
-    upgradeCacheStore(cacheKey, {
+    // Store clean copy (no debug, no cache_info) in Valkey + in-memory
+    storeCache(upgradeKey, {
       label: result.label,
       formula: result.formula,
       answer: result.answer,
