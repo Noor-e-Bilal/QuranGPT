@@ -467,13 +467,16 @@ function parseWithRepair<T>(raw: string, fallback: T): T {
 // ---------- Query reformulation -------------------------------------------
 
 const REFORMULATION_PROMPT = (raw: string) =>
-  `You are a search-query optimizer for a Quranic knowledge base.
-Rewrite the user question below into a rich, specific retrieval query that maximises recall of relevant Quran verses. 
+  `You are a search-query optimizer for a Quran-only knowledge base (English text only).
+Rewrite the user question into a concise set of English keywords that retrieves relevant Quran verses.
+
 Rules:
-- Expand abbreviations and add relevant Islamic terminology
-- Make implicit concepts explicit (e.g. "be patient" → "patience perseverance sabr hardship")
-- Keep the output under 40 words
-- Return ONLY the rewritten query — no explanation, no punctuation beyond the query itself
+- Include the core concept and 3-5 closely related English synonyms or Latin transliterations (e.g. "honesty sidq truthfulness trust amana" — NOT Arabic script)
+- DO NOT use Arabic script characters — only Latin letters; the search engine is English-only
+- DO NOT add references to Prophet Muhammad, Hadith, Sunnah, or "what nabi said" — this database contains only Quran ayah text
+- DO NOT add qualifiers like "Quran says" or "Islam teaches" — just topic keywords
+- Keep output under 25 words
+- Return ONLY the keywords — no explanation, no full sentence, no punctuation
 
 User question: "${raw}"`;
 
