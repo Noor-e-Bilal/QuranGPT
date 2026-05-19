@@ -86,6 +86,14 @@ function getClient(
   };
 }
 
+/** All free OpenCode Zen models, used for 429 rotation. */
+const OPENCODE_FREE_MODELS = [
+  'minimax-m2.5-free',
+  'deepseek-v4-flash-free',
+  'nemotron-3-super-free',
+  'big-pickle',
+];
+
 async function callLLM(
   prompt: string,
   settings?: ProviderSettings,
@@ -96,18 +104,31 @@ async function callLLM(
   } catch (err: unknown) {
     const status = (err as Record<string, unknown>)?.status;
     const isOpencode = !settings || settings.provider === "opencode";
-    const openaiKey = process.env.OPENAI_API_KEY?.trim();
 
-    if (status === 429 && isOpencode && openaiKey) {
-      // opencode.ai free-tier rate limits by IP — silently fall back to OpenAI
+    if (status === 429 && isOpencode) {
+      const currentModel = settings?.model ?? DEFAULT_MODEL;
       const msg = (err as Record<string, unknown>)?.message ?? "";
-      console.warn(`[llm] opencode.ai 429 (${msg}) — falling back to OpenAI`);
-      const fallback: ProviderSettings = {
-        provider: "openai",
-        model: process.env.OPENAI_FALLBACK_MODEL ?? "gpt-4o-mini",
-        temperature: temp,
-      };
-      return getClient(fallback).callText(prompt, temp);
+      console.warn(`[llm] opencode.ai 429 on ${currentModel} (${msg}) — rotating models`);
+
+      // Try each other free model in order
+      const others = OPENCODE_FREE_MODELS.filter((m) => m !== currentModel);
+      for (const fallbackModel of others) {
+        try {
+          console.warn(`[llm] trying ${fallbackModel} after 429`);
+          const fallback: ProviderSettings = {
+            provider: "opencode",
+            model: fallbackModel,
+            temperature: temp,
+          };
+          return await getClient(fallback).callText(prompt, temp);
+        } catch (retryErr: unknown) {
+          const retryStatus = (retryErr as Record<string, unknown>)?.status;
+          if (retryStatus !== 429) throw retryErr; // non-rate-limit error — bail
+          console.warn(`[llm] ${fallbackModel} also 429, trying next`);
+        }
+      }
+      // All free models exhausted
+      throw err;
     }
     throw err;
   }
