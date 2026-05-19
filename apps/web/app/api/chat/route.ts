@@ -110,10 +110,13 @@ export async function POST(req: NextRequest) {
     let cacheInfo: CacheInfo = { strategy: 'miss' };
     if (!isClarificationTurn) {
       const { value, cacheInfo: info } = await lookupCache(question);
-      cacheInfo = info;
-      if (value) {
+      // Guard: reject upgrade-pipeline cache entries (label='Upgrade') that leak
+      // into chat via semantic search (ChromaDB has no namespace filter).
+      if (value && (value as Record<string, unknown>).label !== 'Upgrade') {
+        cacheInfo = info;
         return NextResponse.json({ ...value, request_id: requestId, cache_info: cacheInfo });
       }
+      // If we got a hit but it was an upgrade entry, treat it as a miss
     }
 
     // Use enriched query (strips markers, combines context) for better retrieval.

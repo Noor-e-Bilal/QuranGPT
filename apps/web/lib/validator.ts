@@ -8,6 +8,15 @@ import type {
 
 const SOURCE_POLICY = 'The Clear Quran only';
 
+/** Normalize special typographic characters so LLM quotes match original text. */
+function normalizeQuoteChars(s: string): string {
+  return s
+    .replace(/˹/g, '[')
+    .replace(/˺/g, ']')
+    .replace(/\u2018|\u2019/g, "'")   // curly single quotes → '
+    .replace(/\u201C|\u201D/g, '"');  // curly double quotes → "
+}
+
 export function validateCitations(
   llmOutput: LLMChatOutput,
   evidenceAyahs: AyahRow[]
@@ -28,21 +37,29 @@ export function validateCitations(
       repaired = true;
       continue;
     }
-    const text = textMap.get(c.reference);
+    // Normalize reference: strip surrounding brackets e.g. "[70:33]" → "70:33"
+    const rawRef = ((c as Record<string,unknown>).reference as string).replace(/^\[|\]$/g, '').trim();
+    const rawQuote = ((c as Record<string,unknown>).quote as string);
+    const text = textMap.get(rawRef);
     if (!text) {
       repaired = true;
       continue;
     }
-    if (!text.includes(c.quote)) {
+    // Normalize typographic characters before comparison so LLMs that substitute
+    // ˹˺ with [] (or curly quotes with straight quotes) still pass validation.
+    const normalizedText = normalizeQuoteChars(text);
+    // Also strip surrounding single/double quotes from quote (Ollama wraps quotes)
+    const normalizedQuote = normalizeQuoteChars(rawQuote).replace(/^['''"""]+|['''"""]+$/g, '').trim();
+    if (!normalizedText.includes(normalizedQuote)) {
       repaired = true;
       continue;
     }
-    const [surahStr, ayahStr] = c.reference.split(':');
+    const [surahStr, ayahStr] = rawRef.split(':');
     valid.push({
-      reference: c.reference,
+      reference: rawRef,
       surah: parseInt(surahStr, 10),
       ayah: parseInt(ayahStr, 10),
-      quote: c.quote,
+      quote: rawQuote,
     });
   }
 

@@ -16,8 +16,10 @@ const EMBEDDING_MODEL = 'BAAI/bge-small-en-v1.5';
 const BASE_EMBEDDING_MODEL = 'BAAI/bge-base-en-v1.5';
 
 // Tiered confidence thresholds (calibrated for BGE cosine similarity scores)
-const HIGH_SCORE = 0.50;   // Strong evidence: direct semantic match
-const MEDIUM_SCORE = 0.30; // Partial evidence: related but not precise
+// HIGH_SCORE is set low enough that a strong FTS-only match qualifies when
+// ChromaDB doesn't return the same ayah (FTS-only max combined = 1.0 * 0.4 = 0.40).
+const HIGH_SCORE = 0.38;   // Strong evidence: top FTS match or FTS+semantic overlap
+const MEDIUM_SCORE = 0.20; // Partial evidence: related but not precise
 
 function classifyConfidence(ayahs: EvidenceAyah[]): RetrievalConfidence {
   if (ayahs.length === 0) return 'none';
