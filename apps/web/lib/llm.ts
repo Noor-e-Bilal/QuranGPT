@@ -94,6 +94,24 @@ const OPENCODE_FREE_MODELS = [
   'big-pickle',
 ];
 
+/** Local Ollama fallback — used when all cloud providers are exhausted. */
+const OLLAMA_BASE_URL = process.env.OLLAMA_HOST ?? "http://localhost:11434";
+const OLLAMA_MODEL = process.env.OLLAMA_MODEL ?? "qwen2.5:0.5b";
+
+async function callOllama(prompt: string, temp: number): Promise<string> {
+  const ollama = new OpenAI({
+    apiKey: "ollama", // Ollama doesn't validate the key
+    baseURL: `${OLLAMA_BASE_URL}/v1`,
+  });
+  const completion = await ollama.chat.completions.create({
+    model: OLLAMA_MODEL,
+    max_tokens: 3000,
+    temperature: temp,
+    messages: [{ role: "user", content: prompt }],
+  });
+  return completion.choices[0]?.message?.content ?? "";
+}
+
 async function callLLM(
   prompt: string,
   settings?: ProviderSettings,
@@ -136,9 +154,21 @@ async function callLLM(
           model: process.env.OPENAI_FALLBACK_MODEL ?? "gpt-4o-mini",
           temperature: temp,
         };
-        return getClient(oaiFallback).callText(prompt, temp);
+        try {
+          return await getClient(oaiFallback).callText(prompt, temp);
+        } catch {
+          // OpenAI also failed — fall through to Ollama
+        }
       }
-      throw err;
+
+      // Final fallback: local Ollama
+      console.warn(`[llm] all cloud providers failed — trying local Ollama (${OLLAMA_MODEL})`);
+      try {
+        return await callOllama(prompt, temp);
+      } catch (ollamaErr) {
+        console.error(`[llm] Ollama fallback failed:`, ollamaErr);
+        throw new Error("All language model providers are currently unavailable. Please try again in a moment.");
+      }
     }
     throw err;
   }
