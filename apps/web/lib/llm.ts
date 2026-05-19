@@ -402,6 +402,32 @@ export async function generateVerseExplanation(
 
 // ---------- Shared helpers ------------------------------------------------
 
+/**
+ * Merges a parsed object with the fallback, substituting fallback values
+ * only for fields that are absent (undefined) or have the wrong primitive type.
+ * Explicit `null` is honoured — it means the LLM intentionally left the field
+ * blank (e.g. "limitations": null on a successful response).
+ * Only processes keys present in the fallback (allowlist) to prevent
+ * prototype pollution from untrusted LLM output.
+ */
+function mergeWithFallback<T>(parsed: Record<string, unknown>, fallback: T): T {
+  const fb = fallback as Record<string, unknown>;
+  const merged: Record<string, unknown> = { ...fb };
+  for (const key of Object.keys(fb)) {
+    if (!Object.prototype.hasOwnProperty.call(parsed, key)) continue; // absent → keep fallback
+    const pv = parsed[key];
+    const fv = fb[key];
+    if (pv === null) { merged[key] = null; continue; } // explicit null — honour it
+    if (pv === undefined) continue; // keep fallback
+    // Block wrong primitive types that would cause downstream crashes
+    if (typeof fv === 'string' && typeof pv !== 'string') continue;
+    if (typeof fv === 'boolean' && typeof pv !== 'boolean') continue;
+    if (Array.isArray(fv) && !Array.isArray(pv)) continue;
+    merged[key] = pv;
+  }
+  return merged as T;
+}
+
 function parseWithRepair<T>(raw: string, fallback: T): T {
   // Strip optional markdown code fences
   const cleaned = raw
@@ -409,26 +435,33 @@ function parseWithRepair<T>(raw: string, fallback: T): T {
     .replace(/\s*```\s*$/i, "")
     .trim();
 
-  // First attempt
-  try {
-    return JSON.parse(cleaned) as T;
-  } catch {
-    // Repair attempt: find first { and last }
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      try {
-        return JSON.parse(cleaned.slice(start, end + 1)) as T;
-      } catch {
-        // fall through
-      }
+  const tryParse = (str: string): T | null => {
+    try {
+      const parsed = JSON.parse(str);
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null;
+      return mergeWithFallback(parsed as Record<string, unknown>, fallback);
+    } catch {
+      return null;
     }
-    console.error(
-      "[LLM] parse failed, using fallback. Raw preview:",
-      raw.slice(0, 200),
-    );
-    return fallback;
+  };
+
+  // First attempt: parse full cleaned string
+  const r1 = tryParse(cleaned);
+  if (r1 !== null) return r1;
+
+  // Repair attempt: find first { and last }
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start !== -1 && end !== -1 && end > start) {
+    const r2 = tryParse(cleaned.slice(start, end + 1));
+    if (r2 !== null) return r2;
   }
+
+  console.error(
+    "[LLM] parse failed, using fallback. Raw preview:",
+    raw.slice(0, 200),
+  );
+  return fallback;
 }
 
 // ---------- Query reformulation -------------------------------------------

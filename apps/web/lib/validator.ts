@@ -17,6 +17,17 @@ export function validateCitations(
   let repaired = false;
 
   for (const c of llmOutput.citations ?? []) {
+    // Guard against null/non-object items and missing/invalid field types
+    if (
+      !c ||
+      typeof c !== 'object' ||
+      typeof (c as Record<string,unknown>).reference !== 'string' ||
+      typeof (c as Record<string,unknown>).quote !== 'string' ||
+      ((c as Record<string,unknown>).quote as string).trim().length === 0
+    ) {
+      repaired = true;
+      continue;
+    }
     const text = textMap.get(c.reference);
     if (!text) {
       repaired = true;
@@ -63,14 +74,14 @@ export function buildChatResponse(
   // If answer has content but zero valid citations, add a limitations note
   const limitations =
     llmOutput.limitations ??
-    (citations.length === 0 && llmOutput.answer.trim()
+    (citations.length === 0 && (llmOutput.answer ?? '').trim()
       ? 'No verifiable citations could be extracted from retrieved evidence.'
       : null);
 
   return {
     needs_clarification: llmOutput.needs_clarification ?? false,
     clarifying_question: llmOutput.clarifying_question ?? null,
-    answer: llmOutput.answer,
+    answer: llmOutput.answer ?? '',
     summary: llmOutput.summary,
     citations,
     limitations,
