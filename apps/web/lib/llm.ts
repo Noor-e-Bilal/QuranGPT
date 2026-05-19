@@ -127,7 +127,17 @@ async function callLLM(
           console.warn(`[llm] ${fallbackModel} also 429, trying next`);
         }
       }
-      // All free models exhausted
+      // All free OpenCode models exhausted — try OpenAI as last resort if configured
+      const openaiKey = process.env.OPENAI_API_KEY?.trim();
+      if (openaiKey) {
+        console.warn(`[llm] all OpenCode models 429 — falling back to OpenAI`);
+        const oaiFallback: ProviderSettings = {
+          provider: "openai",
+          model: process.env.OPENAI_FALLBACK_MODEL ?? "gpt-4o-mini",
+          temperature: temp,
+        };
+        return getClient(oaiFallback).callText(prompt, temp);
+      }
       throw err;
     }
     throw err;
