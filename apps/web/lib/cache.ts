@@ -21,6 +21,7 @@ import {
   embedCacheQuestion,
   storeCacheEntry,
   queryCacheEntry,
+  clearCacheCollection,
 } from './chroma';
 import Redis from 'ioredis';
 
@@ -66,6 +67,10 @@ class LruTtlCache<T> {
 
   get size(): number {
     return this.map.size;
+  }
+
+  clear(): void {
+    this.map.clear();
   }
 }
 
@@ -202,3 +207,25 @@ export function storeCache(question: string, value: object): void {
     .catch(() => { /* non-fatal */ });
 }
 
+/**
+ * Flush all cache tiers: in-memory LRU, Valkey, and ChromaDB semantic cache.
+ * Call this via the /api/cache/clear endpoint to evict stale entries.
+ */
+export async function clearCache(): Promise<void> {
+  // L1a — in-memory
+  _memCache.clear();
+
+  // L1b — Valkey (delete all qs:cache:* keys if connected)
+  const client = getValkeyClient();
+  if (client) {
+    try {
+      const keys = await client.keys(VALKEY_KEY_PREFIX + '*');
+      if (keys.length > 0) await client.del(...keys);
+    } catch {
+      // non-fatal
+    }
+  }
+
+  // L2 — ChromaDB semantic cache
+  await clearCacheCollection();
+}

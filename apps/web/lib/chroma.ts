@@ -342,6 +342,25 @@ export async function storeCacheEntry(
 }
 
 /**
+ * Delete all entries from the semantic cache collection in ChromaDB.
+ * Used by the cache-clear API to evict stale low/medium-confidence entries.
+ */
+export async function clearCacheCollection(): Promise<void> {
+  try {
+    const col = await getCacheCollection();
+    const count = await col.count();
+    if (count === 0) return;
+    const peek = await col.peek({ limit: count });
+    if (peek.ids.length > 0) await col.delete({ ids: peek.ids });
+    // Evict the cached handle so the next lookup gets a fresh count
+    _cacheCollHandle = null;
+    _cacheCollPromise = null;
+  } catch (err) {
+    console.warn('[cache] clearCacheCollection failed:', err);
+  }
+}
+
+/**
  * Query the semantic cache. Returns the best match if similarity ≥ threshold.
  * Returns null on cache miss or any ChromaDB error.
  */

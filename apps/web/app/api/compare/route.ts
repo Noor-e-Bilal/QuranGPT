@@ -149,8 +149,8 @@ export async function POST(req: NextRequest) {
       result.debug = upgradeDebug;
     }
 
-    // Store clean copy (no debug, no cache_info) in Valkey + in-memory
-    storeCache(upgradeKey, {
+    // Only cache high-confidence results — never persist low/medium fallback responses
+    if (chatResponse.confidence === 'high') storeCache(upgradeKey, {
       label: result.label,
       formula: result.formula,
       answer: result.answer,
