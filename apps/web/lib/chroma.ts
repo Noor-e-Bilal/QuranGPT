@@ -272,7 +272,7 @@ export async function checkChromaHealth(): Promise<boolean> {
 
 // ---------- Semantic question cache (L2) -----------------------------------
 
-const SEMANTIC_CACHE_THRESHOLD = 0.90; // Minimum cosine similarity to consider a cache hit
+const SEMANTIC_CACHE_THRESHOLD = 0.85; // Minimum cosine similarity to consider a cache hit
 const CACHE_MAX_ENTRIES = 2000;         // Soft cap — old entries are pruned on write
 
 /** Encode a question for cache storage using BGE-base (768-dim). */

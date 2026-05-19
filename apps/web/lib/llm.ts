@@ -610,13 +610,34 @@ User question: "${raw}"`;
 export async function reformulateQuery(raw: string): Promise<string> {
   try {
     const result = await callLLM(REFORMULATION_PROMPT(raw));
-    const cleaned = result.trim().replace(/^["']|["']$/g, "").trim();
+    let cleaned = result.trim().replace(/^["']|["']$/g, "").trim();
     if (!cleaned) return raw;
+
+    // Ollama fallback uses JSON mode → may return {"keywords":["honesty","truthfulness",…]}
+    // Extract the text value before applying other filters.
+    if (cleaned.startsWith('{') || cleaned.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+        const raw_extracted =
+          parsed.keywords ?? parsed.query ?? parsed.reformulated ?? parsed.result ?? parsed.answer ?? '';
+        // Handle both string and array values
+        if (Array.isArray(raw_extracted)) {
+          cleaned = (raw_extracted as string[]).join(' ').trim();
+        } else if (typeof raw_extracted === 'string' && raw_extracted.trim()) {
+          cleaned = raw_extracted.trim();
+        } else {
+          return raw;
+        }
+      } catch {
+        return raw; // malformed JSON → fallback
+      }
+    }
+
     // Reject Arabic script
     if (/[\u0600-\u06FF]/.test(cleaned)) return raw;
     // Reject if too long (LLM wrote an explanation instead of keywords)
     if (cleaned.length > 120) return raw;
-    // Reject if it looks like markdown or structured text
+    // Reject if it still looks like markdown or structured text
     if (/[*#\[\]{}|]/.test(cleaned)) return raw;
     return cleaned;
   } catch {

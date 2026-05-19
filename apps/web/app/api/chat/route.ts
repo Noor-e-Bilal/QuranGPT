@@ -109,12 +109,22 @@ export async function POST(req: NextRequest) {
     // Two-tier cache: only for original (non-clarification) questions
     let cacheInfo: CacheInfo = { strategy: 'miss' };
     if (!isClarificationTurn) {
+      // Try original question first
       const { value, cacheInfo: info } = await lookupCache(question);
       // Guard: reject upgrade-pipeline cache entries (label='Upgrade') that leak
       // into chat via semantic search (ChromaDB has no namespace filter).
       if (value && (value as Record<string, unknown>).label !== 'Upgrade') {
         cacheInfo = info;
         return NextResponse.json({ ...value, request_id: requestId, cache_info: cacheInfo });
+      }
+      // On miss, also try the reformulated query — same concept, different phrasing
+      // hits the cache if reformulation produced similar keywords.
+      if (reformulatedQuery && reformulatedQuery !== question) {
+        const { value: rVal, cacheInfo: rInfo } = await lookupCache(reformulatedQuery);
+        if (rVal && (rVal as Record<string, unknown>).label !== 'Upgrade') {
+          cacheInfo = rInfo;
+          return NextResponse.json({ ...rVal, request_id: requestId, cache_info: cacheInfo });
+        }
       }
       // If we got a hit but it was an upgrade entry, treat it as a miss
     }
@@ -187,6 +197,11 @@ export async function POST(req: NextRequest) {
 
     if (!isClarificationTurn && !llmOutput.needs_clarification) {
       storeCache(question, { ...response });
+      // Also cache under the reformulated query so different phrasings of the same
+      // concept get exact-match cache hits after the first miss.
+      if (reformulatedQuery && reformulatedQuery !== question) {
+        storeCache(reformulatedQuery, { ...response });
+      }
     }
 
     if (IS_DEV && llmOutput._debug && evidence._debug) {
