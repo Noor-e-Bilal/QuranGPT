@@ -8,6 +8,7 @@ import type {
   RetrievalConfidence,
   ProviderSettings,
 } from "./types";
+import { expandReformulation } from "./db";
 
 /** Default (reformulation) model — always minimax via opencode.ai. */
 const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? "minimax-m2.5-free";
@@ -639,7 +640,9 @@ export async function reformulateQuery(raw: string): Promise<string> {
     if (cleaned.length > 120) return raw;
     // Reject if it still looks like markdown or structured text
     if (/[*#\[\]{}|]/.test(cleaned)) return raw;
-    return cleaned;
+
+    // Enrich: remove noise words, add synonyms + Arabic transliterations
+    return expandReformulation(cleaned);
   } catch {
     return raw;
   }
