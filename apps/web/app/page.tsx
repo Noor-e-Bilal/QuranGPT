@@ -508,9 +508,9 @@ export default function ChatPage() {
       {/* Debug panel — rendered outside message list to avoid z-index issues */}
       {debugMsgId && (() => {
         const msg = messages.find((m) => m.id === debugMsgId);
-        return msg?.data?.debug ? (
+        return (msg?.data?.debug || msg?.compareRight?.debug) ? (
           <DebugPanel
-            debug={msg.data.debug}
+            debug={msg.data?.debug}
             upgradeDebug={msg.compareRight?.debug}
             onClose={() => setDebugMsgId(null)}
           />

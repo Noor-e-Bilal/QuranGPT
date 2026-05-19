@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { DebugInfo, UpgradeDebugInfo } from '@/lib/types';
 
 interface Props {
-  debug: DebugInfo;
+  debug?: DebugInfo;
   upgradeDebug?: UpgradeDebugInfo;
   onClose: () => void;
 }
@@ -210,8 +210,10 @@ function UpgradeTab({ upgradeDebug }: { upgradeDebug: UpgradeDebugInfo }) {
 }
 
 export default function DebugPanel({ debug, upgradeDebug, onClose }: Props) {
-  const [tab, setTab] = useState<'current' | 'upgrade'>('current');
-  const hasTabs = !!upgradeDebug;
+  const hasCurrent = !!debug;
+  const hasUpgrade = !!upgradeDebug;
+  const hasTabs = hasCurrent && hasUpgrade;
+  const [tab, setTab] = useState<'current' | 'upgrade'>(hasCurrent ? 'current' : 'upgrade');
 
   return (
     <div
@@ -259,8 +261,8 @@ export default function DebugPanel({ debug, upgradeDebug, onClose }: Props) {
 
         {/* Scrollable body */}
         <div className="overflow-y-auto flex-1 p-4">
-          {(!hasTabs || tab === 'current') && <CurrentTab debug={debug} />}
-          {hasTabs && tab === 'upgrade' && <UpgradeTab upgradeDebug={upgradeDebug} />}
+          {hasCurrent && (!hasTabs || tab === 'current') && <CurrentTab debug={debug!} />}
+          {hasUpgrade && (!hasTabs || tab === 'upgrade') && <UpgradeTab upgradeDebug={upgradeDebug!} />}
         </div>
       </div>
     </div>
