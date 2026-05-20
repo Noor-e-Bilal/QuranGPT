@@ -63,6 +63,30 @@ resource "aws_efs_access_point" "chroma" {
   tags = { Name = "${local.prefix}-ap-chroma" }
 }
 
+# MongoDB chat storage: persists chat sessions and messages across task restarts.
+# MongoDB process in mongo:7 runs as uid/gid 999 ("mongodb" user).
+# IMPORTANT: deployment_minimum_healthy_percent = 0 in ecs.tf ensures only ONE
+# MongoDB container ever mounts this access point at a time (stop-before-start).
+resource "aws_efs_access_point" "mongodb" {
+  file_system_id = aws_efs_file_system.data.id
+
+  root_directory {
+    path = "/mongodb"
+    creation_info {
+      owner_gid   = 999
+      owner_uid   = 999
+      permissions = "0750"
+    }
+  }
+
+  posix_user {
+    gid = 999
+    uid = 999
+  }
+
+  tags = { Name = "${local.prefix}-ap-mongodb" }
+}
+
 # Model cache: @xenova/transformers downloads ONNX embedding models here on first query.
 # Persisting on EFS means the ~400 MB BGE-base model is only downloaded once.
 resource "aws_efs_access_point" "model_cache" {

@@ -26,11 +26,10 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
-  # ── Volumes (ephemeral) ──────────────────────────────────────────────────────
-  # All volumes are Docker-managed (ephemeral) — data is lost when a task stops.
-  # ChromaDB is re-seeded from the bundled image on every task start.
-  # MongoDB chat history is ephemeral for this POC; migrate to Atlas/DocumentDB
-  # for production persistence.
+  # ── Volumes ───────────────────────────────────────────────────────────────────
+  # chroma-data and model-cache are ephemeral Docker volumes. ChromaDB is always
+  # re-seeded from the bundled image, so ephemeral is intentional there.
+  # mongodb-data is EFS-backed so chat history survives task restarts and deploys.
   volume {
     name = "chroma-data"
   }
@@ -39,9 +38,19 @@ resource "aws_ecs_task_definition" "app" {
     name = "model-cache"
   }
 
+  # EFS-backed: chat sessions and messages persist across task replacements.
+  # Only safe because deployment_minimum_healthy_percent = 0 ensures the old task
+  # is fully stopped before the new one starts (single writer at all times).
   volume {
     name = "mongodb-data"
-    # ephemeral — same pattern as chroma-data; upgrade to EFS/Atlas for production
+    efs_volume_configuration {
+      file_system_id     = aws_efs_file_system.data.id
+      transit_encryption = "ENABLED"
+      authorization_config {
+        access_point_id = aws_efs_access_point.mongodb.id
+        iam             = "ENABLED"
+      }
+    }
   }
 
   container_definitions = jsonencode([
@@ -255,8 +264,11 @@ resource "aws_ecs_service" "app" {
   launch_type     = "FARGATE"
   platform_version = "1.4.0"
 
-  deployment_minimum_healthy_percent = 50
-  deployment_maximum_percent         = 200
+  # Stop-before-start: ensures only ONE MongoDB container ever mounts the EFS
+  # access point at a time. Brief downtime (~30s) during deploys is acceptable.
+  # With desired_count=1: minimum=0 means stop old → start new (never 2 running).
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 100
 
   network_configuration {
     subnets          = aws_subnet.private[*].id
