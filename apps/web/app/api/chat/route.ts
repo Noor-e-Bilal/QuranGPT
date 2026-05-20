@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { retrieve } from '@/lib/retrieval';
 import { generateChatResponse, generateClarificationQuestion } from '@/lib/llm';
-import { buildChatResponse, fallbackChatResponse } from '@/lib/validator';
+import { buildChatResponse, fallbackChatResponse, maxRoundsDeclineResponse } from '@/lib/validator';
 import { lookupCache, storeCache } from '@/lib/cache';
 import type { ApiError, CacheInfo, DebugInfo, ProviderSettings } from '@/lib/types';
 
@@ -109,11 +109,24 @@ export async function POST(req: NextRequest) {
     // Two-tier cache: only for original (non-clarification) questions
     let cacheInfo: CacheInfo = { strategy: 'miss' };
     if (!isClarificationTurn) {
+      // Try original question first
       const { value, cacheInfo: info } = await lookupCache(question);
-      cacheInfo = info;
-      if (value) {
+      // Guard: reject upgrade-pipeline cache entries (label='Upgrade') that leak
+      // into chat via semantic search (ChromaDB has no namespace filter).
+      if (value && (value as Record<string, unknown>).label !== 'Upgrade') {
+        cacheInfo = info;
         return NextResponse.json({ ...value, request_id: requestId, cache_info: cacheInfo });
       }
+      // On miss, also try the reformulated query — same concept, different phrasing
+      // hits the cache if reformulation produced similar keywords.
+      if (reformulatedQuery && reformulatedQuery !== question) {
+        const { value: rVal, cacheInfo: rInfo } = await lookupCache(reformulatedQuery);
+        if (rVal && (rVal as Record<string, unknown>).label !== 'Upgrade') {
+          cacheInfo = rInfo;
+          return NextResponse.json({ ...rVal, request_id: requestId, cache_info: cacheInfo });
+        }
+      }
+      // If we got a hit but it was an upgrade entry, treat it as a miss
     }
 
     // Use enriched query (strips markers, combines context) for better retrieval.
@@ -123,10 +136,16 @@ export async function POST(req: NextRequest) {
     const evidence = await retrieve(retrievalQuery);
 
     // ── Confidence gating ────────────────────────────────────────────────
-    const safetyValve =
-      clarificationRound >= MAX_CLARIFICATION_ROUNDS && evidence.confidence !== 'high';
+    // Only high-confidence retrievals produce an answer.
+    // medium/low → ask clarifying questions until MAX_CLARIFICATION_ROUNDS,
+    // then decline gracefully rather than force a low-quality answer.
+    if (evidence.confidence !== 'high') {
+      if (clarificationRound >= MAX_CLARIFICATION_ROUNDS) {
+        const decline = maxRoundsDeclineResponse(requestId);
+        decline.cache_info = { strategy: 'miss' };
+        return NextResponse.json(decline);
+      }
 
-    if (evidence.confidence !== 'high' && !safetyValve) {
       const clarifyOutput = await generateClarificationQuestion(
         question,
         evidence,
@@ -156,8 +175,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(clarifyResponse);
     }
 
-    // ── Answer path (HIGH confidence OR safety valve) ─────────────────────
-    const llmOutput = await generateChatResponse(question, evidence, safetyValve, providerSettings);
+    // ── Answer path (HIGH confidence only) ───────────────────────────────
+    const llmOutput = await generateChatResponse(question, evidence, false, providerSettings);
 
     if (evidence.hitCount === 0 && !llmOutput.needs_clarification) {
       return NextResponse.json(fallbackChatResponse(requestId));
@@ -165,13 +184,24 @@ export async function POST(req: NextRequest) {
 
     const response = buildChatResponse(llmOutput, evidence, requestId);
 
+    // Guard: if citation validation stripped all citations and downgraded confidence,
+    // treat as fallback rather than return a low-quality answer without signal.
+    if (response.confidence !== 'high') {
+      return NextResponse.json(fallbackChatResponse(requestId));
+    }
+
     // Attach reformulated query so UI can show "searched for: ..."
     if (reformulatedQuery) {
       response.reformulated_query = reformulatedQuery;
     }
 
-    if (!isClarificationTurn && evidence.confidence === 'high' && !llmOutput.needs_clarification) {
+    if (!isClarificationTurn && !llmOutput.needs_clarification) {
       storeCache(question, { ...response });
+      // Also cache under the reformulated query so different phrasings of the same
+      // concept get exact-match cache hits after the first miss.
+      if (reformulatedQuery && reformulatedQuery !== question) {
+        storeCache(reformulatedQuery, { ...response });
+      }
     }
 
     if (IS_DEV && llmOutput._debug && evidence._debug) {
@@ -181,7 +211,7 @@ export async function POST(req: NextRequest) {
         reformulated_query: reformulatedQuery,
         enriched_query: enrichedQuery,
         clarification_round: clarificationRound,
-        safety_valve: safetyValve,
+        safety_valve: false,
         cache_hit: false,
         cache_info: cacheInfo,
         provider_settings: providerSettings
@@ -198,6 +228,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(response);
   } catch (err) {
     console.error('[/api/chat]', err);
+    // Anthropic SDK throws with .status = 429 on rate limit
+    const status = (err as Record<string, unknown>)?.status;
+    if (status === 429) {
+      const apiErr: ApiError = {
+        error: { code: 'RATE_LIMITED', message: 'LLM API rate limit reached — please wait a moment and try again.', request_id: requestId },
+      };
+      return NextResponse.json(apiErr, { status: 503 });
+    }
     const apiErr: ApiError = {
       error: {
         code: 'INTERNAL_ERROR',

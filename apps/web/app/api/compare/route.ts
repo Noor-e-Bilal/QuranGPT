@@ -3,10 +3,16 @@ import { v4 as uuidv4 } from 'uuid';
 import { retrieveRRF } from '@/lib/retrieval';
 import { generateChatResponse } from '@/lib/llm';
 import { buildChatResponse } from '@/lib/validator';
+import { lookupCache, storeCache } from '@/lib/cache';
 import type { ApiError, ProviderSettings, ComparePanelResult, UpgradeDebugInfo } from '@/lib/types';
 
 const IS_DEV = process.env.NODE_ENV === 'development';
 const BASE_EMBEDDING_MODEL = 'BAAI/bge-base-en-v1.5';
+
+// Namespace prefix keeps upgrade pipeline results separate from chat pipeline
+// entries in Valkey and ChromaDB. Both share the same lookupCache/storeCache
+// infrastructure (Valkey L1 + ChromaDB L2) so the cache survives server restarts.
+const UPGRADE_CACHE_PREFIX = 'upgrade:';
 
 // Mirrors the rate limiter in /api/chat (10 req/min per IP)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
@@ -94,6 +100,19 @@ export async function POST(req: NextRequest) {
 
   const retrievalQuery = reformulatedQuery ?? buildRetrievalQuery(question);
 
+  // ── Upgrade cache lookup ────────────────────────────────────────────────────
+  // Key: 'upgrade:' + original question (stable, not reformulated_query which
+  // is LLM-generated and non-deterministic). lookupCache uses Valkey (persistent
+  // across process restarts) + in-memory LRU fallback — same as chat pipeline.
+  const upgradeKey = UPGRADE_CACHE_PREFIX + question;
+  const { value: cacheHit, cacheInfo } = await lookupCache(upgradeKey);
+  // Guard against L2 semantic cross-namespace collision: ChromaDB has no namespace
+  // filter, so "upgrade:X" could match the chat-cached "X" and return a ChatResponse.
+  // Check label to confirm the hit is actually an upgrade pipeline result.
+  if (cacheHit && (cacheHit as Record<string, unknown>).label === 'Upgrade') {
+    return NextResponse.json({ ...(cacheHit as ComparePanelResult), cache_info: cacheInfo, request_id: requestId });
+  }
+
   try {
     // Upgrade pipeline: BGE-base embeddings + Reciprocal Rank Fusion
     const { bundle, rrfScores } = await retrieveRRF(retrievalQuery);
@@ -112,6 +131,7 @@ export async function POST(req: NextRequest) {
       confidence: chatResponse.confidence,
       source_policy: chatResponse.source_policy,
       reformulated_query: reformulatedQuery,
+      cache_info: { strategy: 'miss' },
     };
 
     if (IS_DEV && llmOutput._debug) {
@@ -129,9 +149,30 @@ export async function POST(req: NextRequest) {
       result.debug = upgradeDebug;
     }
 
+    // Only cache high-confidence results — never persist low/medium fallback responses
+    if (chatResponse.confidence === 'high') storeCache(upgradeKey, {
+      label: result.label,
+      formula: result.formula,
+      answer: result.answer,
+      summary: result.summary,
+      citations: result.citations,
+      limitations: result.limitations,
+      confidence: result.confidence,
+      source_policy: result.source_policy,
+      reformulated_query: result.reformulated_query,
+    });
+
     return NextResponse.json(result);
   } catch (err) {
     console.error('[/api/compare] error:', err);
+    // Anthropic SDK throws with .status = 429 on rate limit
+    const status = (err as Record<string, unknown>)?.status;
+    if (status === 429) {
+      const apiErr: ApiError = {
+        error: { code: 'RATE_LIMITED', message: 'LLM API rate limit reached — please wait a moment and try again.', request_id: requestId },
+      };
+      return NextResponse.json(apiErr, { status: 503 });
+    }
     const apiErr: ApiError = {
       error: { code: 'INTERNAL_ERROR', message: 'Comparison pipeline failed.', request_id: requestId },
     };

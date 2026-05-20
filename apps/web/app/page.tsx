@@ -182,7 +182,14 @@ export default function ChatPage() {
                 providerSettings,
               }),
             })
-              .then((r) => (r.ok ? r.json() : Promise.reject(r.statusText)))
+              .then(async (r) => {
+                const body = await r.json();
+                if (!r.ok) {
+                  const msg: string = (body as { error?: { message?: string } })?.error?.message ?? 'Upgrade pipeline failed.';
+                  return Promise.reject(msg);
+                }
+                return body as ComparePanelResult;
+              })
               .then((panel: ComparePanelResult) => {
                 setMessages((m) =>
                   m.map((msg) =>
@@ -192,11 +199,12 @@ export default function ChatPage() {
                   )
                 );
               })
-              .catch(() => {
+              .catch((errMsg: unknown) => {
+                const displayError = typeof errMsg === 'string' ? errMsg : 'Upgrade pipeline failed — try again.';
                 setMessages((m) =>
                   m.map((msg) =>
                     msg.id === msgId
-                      ? { ...msg, compareRightLoading: false, compareRightError: 'Upgrade pipeline failed — try again.' }
+                      ? { ...msg, compareRightLoading: false, compareRightError: displayError }
                       : msg
                   )
                 );
@@ -243,7 +251,7 @@ export default function ChatPage() {
                   right={msg.compareRight ?? null}
                   rightLoading={msg.compareRightLoading ?? false}
                   rightError={msg.compareRightError}
-                  onDebug={msg.data.debug ? () => setDebugMsgId(msg.id) : undefined}
+                  onDebug={(msg.data.debug || msg.compareRight?.debug) ? () => setDebugMsgId(msg.id) : undefined}
                 />
               </div>
             ) : (
@@ -291,17 +299,6 @@ export default function ChatPage() {
                 {/* Metadata */}
                 {msg.data && !msg.isClarification && (
                   <div className="mt-2 flex items-center gap-2 flex-wrap">
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        msg.data.confidence === 'high'
-                          ? 'bg-green-700/50 text-green-300'
-                          : msg.data.confidence === 'medium'
-                          ? 'bg-yellow-700/50 text-yellow-300'
-                          : 'bg-red-700/50 text-red-300'
-                      }`}
-                    >
-                      {msg.data.confidence}
-                    </span>
                     <span className="text-[10px] text-slate-500">{msg.data.source_policy}</span>
                     {msg.data.cache_info && msg.data.cache_info.strategy !== 'miss' && (
                       <span
@@ -321,9 +318,6 @@ export default function ChatPage() {
                           ? `cache ~${(msg.data.cache_info.similarity! * 100).toFixed(0)}%`
                           : 'cached'}
                       </span>
-                    )}
-                    {msg.data.limitations && (
-                      <span className="text-[10px] text-amber-400">⚠ {msg.data.limitations}</span>
                     )}
                     {msg.data.debug && (
                       <div className="ml-auto">
@@ -397,7 +391,7 @@ export default function ChatPage() {
               onChange={(e) => handleProviderChange(e.target.value as ProviderSettings['provider'])}
               className="bg-slate-700 border border-slate-600 rounded-lg px-2 py-1.5 text-slate-200 outline-none focus:border-emerald-500"
             >
-              <option value="opencode">OpenCode (minimax)</option>
+              <option value="opencode">OpenCode.ai (free)</option>
               <option value="claude">Claude (Anthropic)</option>
               <option value="openai">OpenAI</option>
               <option value="openrouter">OpenRouter</option>
@@ -514,9 +508,9 @@ export default function ChatPage() {
       {/* Debug panel — rendered outside message list to avoid z-index issues */}
       {debugMsgId && (() => {
         const msg = messages.find((m) => m.id === debugMsgId);
-        return msg?.data?.debug ? (
+        return (msg?.data?.debug || msg?.compareRight?.debug) ? (
           <DebugPanel
-            debug={msg.data.debug}
+            debug={msg.data?.debug}
             upgradeDebug={msg.compareRight?.debug}
             onClose={() => setDebugMsgId(null)}
           />

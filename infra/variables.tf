@@ -63,13 +63,25 @@ variable "web_memory" {
 variable "chroma_cpu" {
   description = "CPU units for the ChromaDB sidecar container"
   type        = number
-  default     = 1024
+  default     = 512
 }
 
 variable "chroma_memory" {
   description = "Memory (MiB) for the ChromaDB sidecar container"
   type        = number
   default     = 2048
+}
+
+variable "valkey_cpu" {
+  description = "CPU units for the Valkey (L1 cache) sidecar container"
+  type        = number
+  default     = 512
+}
+
+variable "valkey_memory" {
+  description = "Memory (MiB) for the Valkey sidecar container"
+  type        = number
+  default     = 1024
 }
 
 variable "desired_count" {
