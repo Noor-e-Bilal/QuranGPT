@@ -18,6 +18,11 @@ output "ecs_cluster_name" {
   value       = aws_ecs_cluster.main.name
 }
 
+output "ecs_task_definition_arn" {
+  description = "Latest ECS task definition ARN — use this to update the service after infra changes"
+  value       = aws_ecs_task_definition.app.arn
+}
+
 output "efs_id" {
   description = "EFS filesystem ID — reference when mounting for the ingestion job"
   value       = aws_efs_file_system.data.id

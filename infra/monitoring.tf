@@ -13,6 +13,11 @@ resource "aws_cloudwatch_log_group" "valkey" {
   retention_in_days = 7
 }
 
+resource "aws_cloudwatch_log_group" "mongodb" {
+  name              = "/ecs/${local.prefix}-mongodb"
+  retention_in_days = 14
+}
+
 # ── Optional: ALB 5xx alarm ───────────────────────────────────────────────────
 # Uncomment and add an SNS topic (var.alert_sns_arn) to receive email alerts.
 #

@@ -27,17 +27,21 @@ resource "aws_ecs_task_definition" "app" {
   task_role_arn            = aws_iam_role.ecs_task.arn
 
   # ── Volumes (ephemeral) ──────────────────────────────────────────────────────
-  # Using local (Docker) volumes instead of EFS to avoid Fargate EFS DNS issues.
-  # chroma-data and model-cache are ephemeral: the init container seeds ChromaDB
-  # on every task start from the data bundled in the web image.
+  # All volumes are Docker-managed (ephemeral) — data is lost when a task stops.
+  # ChromaDB is re-seeded from the bundled image on every task start.
+  # MongoDB chat history is ephemeral for this POC; migrate to Atlas/DocumentDB
+  # for production persistence.
   volume {
     name = "chroma-data"
-    # empty block = Docker-managed ephemeral volume (lost when task stops)
   }
 
   volume {
     name = "model-cache"
-    # empty block = Docker-managed ephemeral volume
+  }
+
+  volume {
+    name = "mongodb-data"
+    # ephemeral — same pattern as chroma-data; upgrade to EFS/Atlas for production
   }
 
   container_definitions = jsonencode([
@@ -73,8 +77,10 @@ resource "aws_ecs_task_definition" "app" {
     # Non-essential: if Valkey crashes, the web container falls back to in-memory.
     {
       name      = "valkey"
-      image     = "valkey/valkey:7.2-alpine"
+      image     = "valkey/valkey:8"
       essential = false
+      cpu       = var.valkey_cpu
+      memory    = var.valkey_memory
 
       portMappings = [{ containerPort = 6379, protocol = "tcp" }]
 
@@ -82,8 +88,8 @@ resource "aws_ecs_task_definition" "app" {
         "valkey-server",
         "--maxmemory", "256mb",
         "--maxmemory-policy", "allkeys-lru",
-        "--save", "",          # disable RDB snapshots — ephemeral is intentional
-        "--appendonly", "no",  # disable AOF — same reason
+        "--save", "",         # disable RDB snapshots — ephemeral is intentional
+        "--appendonly", "no", # disable AOF — same reason
       ]
 
       logConfiguration = {
@@ -96,11 +102,47 @@ resource "aws_ecs_task_definition" "app" {
       }
     },
 
+    # ── MongoDB sidecar (chat storage) ────────────────────────────────────────
+    # Stores chat sessions and messages (the chat history sidebar feature).
+    # Storage is ephemeral — chat history is lost when the task is replaced.
+    # For production persistence, replace with MongoDB Atlas (set MONGODB_URI
+    # secret to the Atlas connection string and remove this sidecar).
+    {
+      name      = "mongodb"
+      image     = "mongo:7"
+      essential = true
+      cpu       = var.mongo_cpu
+      memory    = var.mongo_memory
+
+      portMappings = [{ containerPort = 27017, protocol = "tcp" }]
+
+      environment = [
+        { name = "MONGO_INITDB_DATABASE", value = "quransays" },
+      ]
+
+      mountPoints = [{
+        sourceVolume  = "mongodb-data"
+        containerPath = "/data/db"
+        readOnly      = false
+      }]
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.mongodb.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "mongodb"
+        }
+      }
+    },
+
     # ── ChromaDB sidecar ──────────────────────────────────────────────────────
     {
       name      = "chroma"
       image     = "chromadb/chroma:latest"
       essential = true
+      cpu       = var.chroma_cpu
+      memory    = var.chroma_memory
 
       dependsOn = [{
         containerName = "chroma-init"
@@ -136,19 +178,28 @@ resource "aws_ecs_task_definition" "app" {
       name      = "web"
       image     = var.web_image
       essential = true
+      cpu       = var.web_cpu
+      memory    = var.web_memory
 
       portMappings = [{ containerPort = 3000, protocol = "tcp" }]
 
-      dependsOn = [{
-        containerName = "chroma"
-        condition     = "START"
-      }]
+      dependsOn = [
+        {
+          containerName = "chroma"
+          condition     = "START"
+        },
+        {
+          containerName = "mongodb"
+          condition     = "START"
+        },
+      ]
 
       environment = [
         { name = "NODE_ENV",           value = "production" },
         { name = "PORT",               value = "3000" },
         { name = "CHROMA_URL",         value = "http://localhost:8000" },
         { name = "VALKEY_URL",         value = "redis://localhost:6379" },
+        { name = "MONGODB_URI",        value = "mongodb://localhost:27017/quransays" },
         # DB_PATH is set as ENV in the Dockerfile (/app/data/quran.db, bundled in image)
         { name = "ANTHROPIC_BASE_URL", value = "https://opencode.ai/zen" },
         { name = "ANTHROPIC_MODEL",    value = "minimax-m2.5-free" },

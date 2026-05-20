@@ -8,7 +8,7 @@ locals {
   }
 
   # ECS task totals = sum of all container allocations
-  # Valid Fargate combination: 2048 CPU / 5120 MiB
-  task_cpu    = var.web_cpu + var.chroma_cpu + var.valkey_cpu
-  task_memory = var.web_memory + var.chroma_memory + var.valkey_memory
+  # Valid Fargate combination: 4096 CPU / 8192 MiB (web+chroma+valkey+mongo)
+  task_cpu    = var.web_cpu + var.chroma_cpu + var.valkey_cpu + var.mongo_cpu
+  task_memory = var.web_memory + var.chroma_memory + var.valkey_memory + var.mongo_memory
 }

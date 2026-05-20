@@ -65,6 +65,7 @@ resource "aws_iam_role_policy" "ecs_task_logs" {
       Resource = [
         "${aws_cloudwatch_log_group.web.arn}:*",
         "${aws_cloudwatch_log_group.chroma.arn}:*",
+        "${aws_cloudwatch_log_group.mongodb.arn}:*",
       ]
     }]
   })

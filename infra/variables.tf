@@ -84,6 +84,18 @@ variable "valkey_memory" {
   default     = 1024
 }
 
+variable "mongo_cpu" {
+  description = "CPU units for the MongoDB (chat storage) sidecar container"
+  type        = number
+  default     = 512
+}
+
+variable "mongo_memory" {
+  description = "Memory (MiB) for the MongoDB sidecar container"
+  type        = number
+  default     = 1024
+}
+
 variable "desired_count" {
   description = "Desired number of ECS task instances"
   type        = number
