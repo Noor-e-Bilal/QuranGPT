@@ -59,6 +59,19 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      # S3: read build assets (quran.db + chroma/) before docker build
+      {
+        Sid    = "S3ReadBuildAssets"
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:ListBucket",
+        ]
+        Resource = [
+          aws_s3_bucket.build_assets.arn,
+          "${aws_s3_bucket.build_assets.arn}/*",
+        ]
+      },
       # ECR: authorize (account-level) + push to the specific repo only
       {
         Sid    = "ECRGetAuthToken"

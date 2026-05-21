@@ -37,6 +37,10 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Download build assets from S3
+        run: |
+          aws s3 sync "s3://quransays-prod-build-assets/data/" data/
+
       - name: Build, tag, and push image to ECR
         id: build-image
         env:

@@ -33,6 +33,11 @@ output "github_actions_role_arn" {
   value       = aws_iam_role.github_actions_deploy.arn
 }
 
+output "build_assets_bucket" {
+  description = "S3 bucket for build assets (quran.db + chroma/). Populate with: aws s3 sync data/ s3://<bucket>/data/"
+  value       = aws_s3_bucket.build_assets.bucket
+}
+
 output "secret_arns" {
   description = "Secrets Manager ARNs — populate with real API keys before first deploy"
   value = {
