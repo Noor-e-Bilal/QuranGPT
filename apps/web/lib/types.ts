@@ -19,7 +19,7 @@ export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
     'big-pickle',
   ],
   claude: ['claude-opus-4-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
-  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1'],
+  openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-5.1', 'gpt-5.4-mini', 'gpt-5.4-nano'],
   openrouter: [
     'google/gemini-2.5-flash-preview:free',
     'meta-llama/llama-4-maverick:free',
