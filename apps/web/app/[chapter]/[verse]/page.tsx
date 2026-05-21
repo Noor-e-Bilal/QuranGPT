@@ -41,7 +41,7 @@ export default async function VersePage({ params }: Props) {
     <div className="flex flex-col gap-6">
       {/* Breadcrumb */}
       <nav className="text-sm text-slate-400">
-        <Link href="/" className="hover:text-emerald-400 transition-colors">
+        <Link href="/chat" className="hover:text-emerald-400 transition-colors">
           Chat
         </Link>
         <span className="mx-2">›</span>

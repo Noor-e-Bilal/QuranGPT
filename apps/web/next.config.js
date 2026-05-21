@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['chromadb', '@xenova/transformers', 'ioredis'],
+    serverComponentsExternalPackages: ['chromadb', '@xenova/transformers', 'ioredis', 'mongodb'],
     instrumentationHook: true,
   },
 };
