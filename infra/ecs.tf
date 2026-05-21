@@ -5,6 +5,8 @@ resource "aws_ecs_cluster" "main" {
     name  = "containerInsights"
     value = "enabled"
   }
+
+  tags = { Name = "${local.prefix}-cluster" }
 }
 
 resource "aws_ecs_cluster_capacity_providers" "main" {
@@ -25,6 +27,8 @@ resource "aws_ecs_task_definition" "app" {
   memory                   = local.task_memory
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
+
+  tags = { Name = "${local.prefix}-task-def" }
 
   # ── Volumes ───────────────────────────────────────────────────────────────────
   # chroma-data and model-cache are ephemeral Docker volumes. ChromaDB is always
@@ -283,6 +287,8 @@ resource "aws_ecs_service" "app" {
   }
 
   depends_on = [aws_lb_listener.http]
+
+  tags = { Name = "${local.prefix}-svc" }
 
   lifecycle {
     # Deployments are managed via CI/CD (docker push + force-new-deployment).

@@ -28,6 +28,11 @@ output "efs_id" {
   value       = aws_efs_file_system.data.id
 }
 
+output "github_actions_role_arn" {
+  description = "IAM role ARN for GitHub Actions OIDC — set as AWS_ROLE_ARN secret in the GitHub repo"
+  value       = aws_iam_role.github_actions_deploy.arn
+}
+
 output "secret_arns" {
   description = "Secrets Manager ARNs — populate with real API keys before first deploy"
   value = {

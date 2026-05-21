@@ -9,6 +9,7 @@ resource "aws_secretsmanager_secret" "anthropic_api_key" {
   name                    = "${local.prefix}/anthropic-api-key"
   description             = "opencode.ai API key — query reformulation via minimax-m2.5-free"
   recovery_window_in_days = 7
+  tags                    = { Name = "${local.prefix}-secret-anthropic-api-key" }
 }
 
 resource "aws_secretsmanager_secret_version" "anthropic_api_key" {
@@ -24,6 +25,7 @@ resource "aws_secretsmanager_secret" "claude_api_key" {
   name                    = "${local.prefix}/claude-api-key"
   description             = "Anthropic Claude API key"
   recovery_window_in_days = 7
+  tags                    = { Name = "${local.prefix}-secret-claude-api-key" }
 }
 
 resource "aws_secretsmanager_secret_version" "claude_api_key" {
@@ -39,6 +41,7 @@ resource "aws_secretsmanager_secret" "openai_api_key" {
   name                    = "${local.prefix}/openai-api-key"
   description             = "OpenAI API key"
   recovery_window_in_days = 7
+  tags                    = { Name = "${local.prefix}-secret-openai-api-key" }
 }
 
 resource "aws_secretsmanager_secret_version" "openai_api_key" {
@@ -54,6 +57,7 @@ resource "aws_secretsmanager_secret" "openrouter_api_key" {
   name                    = "${local.prefix}/openrouter-api-key"
   description             = "OpenRouter API key (free models: Gemini Flash, Llama-4, etc.)"
   recovery_window_in_days = 7
+  tags                    = { Name = "${local.prefix}-secret-openrouter-api-key" }
 }
 
 resource "aws_secretsmanager_secret_version" "openrouter_api_key" {

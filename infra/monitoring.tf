@@ -1,21 +1,25 @@
 resource "aws_cloudwatch_log_group" "web" {
   name              = "/ecs/${local.prefix}-web"
   retention_in_days = 30
+  tags              = { Name = "${local.prefix}-logs-web" }
 }
 
 resource "aws_cloudwatch_log_group" "chroma" {
   name              = "/ecs/${local.prefix}-chroma"
   retention_in_days = 14
+  tags              = { Name = "${local.prefix}-logs-chroma" }
 }
 
 resource "aws_cloudwatch_log_group" "valkey" {
   name              = "/ecs/${local.prefix}-valkey"
   retention_in_days = 7
+  tags              = { Name = "${local.prefix}-logs-valkey" }
 }
 
 resource "aws_cloudwatch_log_group" "mongodb" {
   name              = "/ecs/${local.prefix}-mongodb"
   retention_in_days = 14
+  tags              = { Name = "${local.prefix}-logs-mongodb" }
 }
 
 # ── Optional: ALB 5xx alarm ───────────────────────────────────────────────────

@@ -40,6 +40,8 @@ resource "aws_lb_listener" "http" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app.arn
   }
+
+  tags = { Name = "${local.prefix}-listener-http" }
 }
 
 # ── HTTPS listener (uncomment once you have an ACM certificate) ───────────────

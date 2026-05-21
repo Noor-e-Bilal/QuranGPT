@@ -22,46 +22,9 @@ resource "aws_efs_mount_target" "data" {
 
 # ── Access Points ─────────────────────────────────────────────────────────────
 # Each access point is an isolated directory inside the single EFS filesystem.
-
-resource "aws_efs_access_point" "sqlite" {
-  file_system_id = aws_efs_file_system.data.id
-
-  root_directory {
-    path = "/sqlite"
-    creation_info {
-      owner_gid   = 1000
-      owner_uid   = 1000
-      permissions = "0750"
-    }
-  }
-
-  posix_user {
-    gid = 1000
-    uid = 1000
-  }
-
-  tags = { Name = "${local.prefix}-ap-sqlite" }
-}
-
-resource "aws_efs_access_point" "chroma" {
-  file_system_id = aws_efs_file_system.data.id
-
-  root_directory {
-    path = "/chroma"
-    creation_info {
-      owner_gid   = 1000
-      owner_uid   = 1000
-      permissions = "0750"
-    }
-  }
-
-  posix_user {
-    gid = 1000
-    uid = 1000
-  }
-
-  tags = { Name = "${local.prefix}-ap-chroma" }
-}
+# Only one access point is active: mongodb (chat history persistence).
+# sqlite/chroma/model_cache were removed — those volumes are ephemeral in the
+# task definition (data re-seeded from image on every task start).
 
 # MongoDB chat storage: persists chat sessions and messages across task restarts.
 # MongoDB process in mongo:7 runs as uid/gid 999 ("mongodb" user).
@@ -85,26 +48,4 @@ resource "aws_efs_access_point" "mongodb" {
   }
 
   tags = { Name = "${local.prefix}-ap-mongodb" }
-}
-
-# Model cache: @xenova/transformers downloads ONNX embedding models here on first query.
-# Persisting on EFS means the ~400 MB BGE-base model is only downloaded once.
-resource "aws_efs_access_point" "model_cache" {
-  file_system_id = aws_efs_file_system.data.id
-
-  root_directory {
-    path = "/model-cache"
-    creation_info {
-      owner_gid   = 0
-      owner_uid   = 0
-      permissions = "0755"
-    }
-  }
-
-  posix_user {
-    gid = 0
-    uid = 0
-  }
-
-  tags = { Name = "${local.prefix}-ap-model-cache" }
 }

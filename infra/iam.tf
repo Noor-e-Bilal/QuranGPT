@@ -11,6 +11,8 @@ resource "aws_iam_role" "ecs_execution" {
       Principal = { Service = "ecs-tasks.amazonaws.com" }
     }]
   })
+
+  tags = { Name = "${local.prefix}-ecs-execution" }
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_execution_managed" {
@@ -51,6 +53,8 @@ resource "aws_iam_role" "ecs_task" {
       Principal = { Service = "ecs-tasks.amazonaws.com" }
     }]
   })
+
+  tags = { Name = "${local.prefix}-ecs-task" }
 }
 
 resource "aws_iam_role_policy" "ecs_task_logs" {
