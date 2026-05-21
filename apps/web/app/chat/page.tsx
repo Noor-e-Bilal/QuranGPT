@@ -10,6 +10,7 @@ export default function ChatIndexPage() {
 
   useEffect(() => {
     if (!userId) return;
+    let cancelled = false;
 
     async function redirectToChat() {
       // Try to find the most recent existing chat
@@ -19,7 +20,7 @@ export default function ChatIndexPage() {
           const json = await res.json();
           const chats: Array<{ id: string }> = json.chats ?? [];
           if (chats.length > 0) {
-            router.replace(`/chat/${chats[0].id}`);
+            if (!cancelled) router.replace(`/chat/${chats[0].id}`);
             return;
           }
         }
@@ -36,7 +37,7 @@ export default function ChatIndexPage() {
         });
         if (res.ok) {
           const { chat } = await res.json();
-          router.replace(`/chat/${chat.id}`);
+          if (!cancelled) router.replace(`/chat/${chat.id}`);
         }
       } catch {
         // Non-fatal; user sees a blank screen — acceptable edge case
@@ -44,6 +45,7 @@ export default function ChatIndexPage() {
     }
 
     redirectToChat();
+    return () => { cancelled = true; };
   }, [userId, router]);
 
   return (

@@ -114,10 +114,10 @@ export async function touchChat(chatId: string): Promise<void> {
 
 export async function deleteChat(chatId: string): Promise<void> {
   const db = await getDb();
-  // Two-step delete (no FK cascade in MongoDB). Messages are cleaned up after
-  // the chat row so they're never visible, but the pair is not transactional.
-  await db.collection<ChatDoc>('chats').deleteOne({ _id: chatId });
+  // Delete messages first — if chat delete then fails, we have an empty-but-visible
+  // chat (recoverable) rather than invisible orphaned messages (irrecoverable).
   await db.collection<MessageDoc>('messages').deleteMany({ chat_id: chatId });
+  await db.collection<ChatDoc>('chats').deleteOne({ _id: chatId });
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────

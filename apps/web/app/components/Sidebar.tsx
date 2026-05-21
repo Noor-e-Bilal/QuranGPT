@@ -68,14 +68,12 @@ export default function Sidebar({ onNewChat }: SidebarProps) {
     }
   }, []);
 
+  // Single effect: re-run whenever userId, activeChatId, or refreshToken changes.
+  // Merging the two separate effects prevents duplicate fetches on initial mount
+  // when userId first resolves (both effects would have fired simultaneously).
   useEffect(() => {
     if (userId) loadChats(userId);
-  }, [userId, loadChats]);
-
-  // Re-load when active chat changes or when refreshToken bumps (title/message updates)
-  useEffect(() => {
-    if (userId) loadChats(userId);
-  }, [activeChatId, userId, loadChats, refreshToken]);
+  }, [userId, activeChatId, loadChats, refreshToken]);
 
   async function handleNewChat() {
     if (!userId || creating) return;
@@ -102,11 +100,9 @@ export default function Sidebar({ onNewChat }: SidebarProps) {
   async function handleDeleteChat(e: React.MouseEvent, chatId: string) {
     e.stopPropagation();
     e.preventDefault();
+    if (!userId) return;
     try {
-      const url = userId
-        ? `/api/chats/${chatId}?userId=${encodeURIComponent(userId)}`
-        : `/api/chats/${chatId}`;
-      await fetch(url, { method: 'DELETE' });
+      await fetch(`/api/chats/${chatId}?userId=${encodeURIComponent(userId)}`, { method: 'DELETE' });
       if (userId) await loadChats(userId);
       if (activeChatId === chatId) {
         router.push('/chat');

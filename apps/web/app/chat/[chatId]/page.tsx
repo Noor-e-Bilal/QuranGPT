@@ -93,8 +93,10 @@ export default function ChatPage() {
     titleSetRef.current = false;
 
     async function loadHistory() {
+      const uid = getAnonId();
+      if (!uid) { setHistoryLoaded(true); return; }
       try {
-        const res = await fetch(`/api/chats/${chatId}`);
+        const res = await fetch(`/api/chats/${chatId}?userId=${encodeURIComponent(uid)}`);
         if (res.status === 404) {
           setNotFound(true);
           setHistoryLoaded(true);
@@ -143,8 +145,10 @@ export default function ChatPage() {
   /** Persist a message to the DB (non-blocking, best-effort). */
   const persistMessage = useCallback(
     async (role: 'user' | 'assistant', content: string, data: object | null) => {
+      const uid = getAnonId();
+      if (!uid) return;
       try {
-        await fetch(`/api/chats/${chatId}`, {
+        await fetch(`/api/chats/${chatId}?userId=${encodeURIComponent(uid)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ message: { role, content, data } }),
@@ -163,8 +167,10 @@ export default function ChatPage() {
       titleSetRef.current = true;
       const title = makeChatTitle(firstMessage);
       setChatTitle(title);
+      const uid = getAnonId();
+      if (!uid) return;
       try {
-        await fetch(`/api/chats/${chatId}`, {
+        await fetch(`/api/chats/${chatId}?userId=${encodeURIComponent(uid)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ title }),

@@ -11,12 +11,15 @@ import {
 type RouteContext = { params: { chatId: string } };
 
 export async function GET(req: NextRequest, { params }: RouteContext) {
+  const userId = req.nextUrl.searchParams.get('userId');
+  if (!userId) {
+    return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+  }
   const chat = await getChat(params.chatId);
   if (!chat) {
     return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
   }
-  const userId = req.nextUrl.searchParams.get('userId');
-  if (userId && chat.user_id !== userId) {
+  if (chat.user_id !== userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   const messages = await getMessages(params.chatId);
@@ -24,12 +27,15 @@ export async function GET(req: NextRequest, { params }: RouteContext) {
 }
 
 export async function PATCH(req: NextRequest, { params }: RouteContext) {
+  const userId = req.nextUrl.searchParams.get('userId');
+  if (!userId) {
+    return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+  }
   const chat = await getChat(params.chatId);
   if (!chat) {
     return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
   }
-  const userId = req.nextUrl.searchParams.get('userId');
-  if (userId && chat.user_id !== userId) {
+  if (chat.user_id !== userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -69,12 +75,15 @@ export async function PATCH(req: NextRequest, { params }: RouteContext) {
 }
 
 export async function DELETE(req: NextRequest, { params }: RouteContext) {
+  const userId = req.nextUrl.searchParams.get('userId');
+  if (!userId) {
+    return NextResponse.json({ error: 'userId is required' }, { status: 400 });
+  }
   const chat = await getChat(params.chatId);
   if (!chat) {
     return NextResponse.json({ error: 'Chat not found' }, { status: 404 });
   }
-  const userId = req.nextUrl.searchParams.get('userId');
-  if (userId && chat.user_id !== userId) {
+  if (chat.user_id !== userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
   await deleteChat(params.chatId);
