@@ -2,6 +2,7 @@ import { getSurah, getAyahsBySurah, getAllSurahs } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
+import AyahList from '@/app/components/AyahList';
 
 interface Props {
   params: Promise<{ chapter: string }>;
@@ -82,34 +83,8 @@ export default async function SurahPage({ params }: Props) {
           </p>
         </div>
 
-        {/* Ayah list */}
-        <ol className="flex flex-col gap-3">
-          {ayahs.map((a) => (
-            <li key={a.ayah}>
-              <Link
-                href={`/${ch}/${a.ayah}`}
-                className="flex items-start gap-4 bg-slate-800/60 border border-slate-700 rounded-xl px-4 py-3 hover:border-emerald-600 transition-colors group"
-              >
-                <span className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-emerald-800 text-emerald-100 text-xs font-bold group-hover:bg-emerald-600 transition-colors">
-                  {a.ayah}
-                </span>
-                <div className="flex flex-col gap-2 min-w-0 flex-1">
-                  {a.arabic_text && (
-                    <p
-                      dir="rtl"
-                      lang="ar"
-                      className="text-2xl sm:text-3xl leading-relaxed text-slate-100 text-right line-clamp-2"
-                      style={{ fontFamily: "'KFGQPCUthmanicScriptHAFS', serif" }}
-                    >
-                      {a.arabic_text}
-                    </p>
-                  )}
-                  <p className="text-xs text-slate-400 line-clamp-2">{a.display_text}</p>
-                </div>
-              </Link>
-            </li>
-          ))}
-        </ol>
+        {/* Ayah list with client-side pagination */}
+        <AyahList ayahs={ayahs} chapter={ch} />
 
         {/* Surah navigation */}
         <nav className="flex items-center justify-between gap-4 pt-2">
