@@ -1,122 +1,178 @@
-import { getAyah, getSurah, isValidReference, getAyahsByReferences } from '@/lib/db';
-import { queryCollection } from '@/lib/chroma';
-import { generateVerseExplanation } from '@/lib/llm';
+import { getAyah, getSurah, getAllSurahs } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import type { Metadata } from 'next';
+import AyahFrame from '@/app/components/AyahFrame';
 
 interface Props {
-  params: { chapter: string; verse: string };
+  params: Promise<{ chapter: string; verse: string }>;
+}
+
+export async function generateStaticParams() {
+  const surahs = getAllSurahs();
+  const params: { chapter: string; verse: string }[] = [];
+  for (const s of surahs) {
+    for (let v = 1; v <= s.ayah_count; v++) {
+      params.push({ chapter: String(s.surah), verse: String(v) });
+    }
+  }
+  return params;
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const { chapter, verse } = await params;
+  const ch = parseInt(chapter, 10);
+  const vs = parseInt(verse, 10);
+  const ayah = getAyah(ch, vs);
+  const surahRow = getSurah(ch);
+  if (!ayah || !surahRow) return {};
+
+  const title = `Surah ${surahRow.name_en} ${ch}:${vs} — QuranSays`;
+  const description = ayah.display_text.slice(0, 160);
+  const url = `https://quransays.com/${ch}/${vs}`;
+
+  return {
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: 'QuranSays',
+      type: 'article',
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
+    alternates: { canonical: url },
+  };
 }
 
 export default async function VersePage({ params }: Props) {
-  const chapter = parseInt(params.chapter, 10);
-  const verse = parseInt(params.verse, 10);
+  const { chapter, verse } = await params;
+  const ch = parseInt(chapter, 10);
+  const vs = parseInt(verse, 10);
 
-  if (
-    !Number.isInteger(chapter) ||
-    !Number.isInteger(verse) ||
-    chapter < 1 ||
-    chapter > 114 ||
-    verse < 1 ||
-    !isValidReference(chapter, verse)
-  ) {
+  if (!Number.isInteger(ch) || !Number.isInteger(vs) || ch < 1 || ch > 114 || vs < 1) {
     notFound();
   }
 
-  const ayah = getAyah(chapter, verse);
-  const surahRow = getSurah(chapter);
+  const ayah = getAyah(ch, vs);
+  const surahRow = getSurah(ch);
   if (!ayah || !surahRow) notFound();
 
-  const chromaRows = await queryCollection(ayah.display_text, 7).catch(() => []);
-  const relatedRefs = chromaRows
-    .filter((r) => r.reference !== ayah.reference)
-    .slice(0, 6)
-    .map((r) => r.reference);
-  const relatedAyahs = getAyahsByReferences(relatedRefs);
-  const llm = await generateVerseExplanation(ayah, relatedAyahs);
+  const prevVerse = vs > 1 ? vs - 1 : null;
+  const nextVerse = vs < surahRow.ayah_count ? vs + 1 : null;
 
-  const relatedMap = new Map(relatedAyahs.map((a) => [a.reference, a]));
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://quransays.com' },
+          {
+            '@type': 'ListItem',
+            position: 2,
+            name: `Surah ${surahRow.name_en}`,
+            item: `https://quransays.com/${ch}`,
+          },
+          {
+            '@type': 'ListItem',
+            position: 3,
+            name: `Ayah ${vs}`,
+            item: `https://quransays.com/${ch}/${vs}`,
+          },
+        ],
+      },
+      {
+        '@type': 'Article',
+        headline: `Surah ${surahRow.name_en} ${ch}:${vs}`,
+        description: ayah.display_text.slice(0, 200),
+        isPartOf: { '@type': 'Book', name: 'The Clear Quran', author: 'Mustafa Khattab' },
+        url: `https://quransays.com/${ch}/${vs}`,
+      },
+    ],
+  };
 
   return (
-    <div className="flex flex-col gap-6">
-      {/* Breadcrumb */}
-      <nav className="text-sm text-slate-400">
-        <Link href="/chat" className="hover:text-emerald-400 transition-colors">
-          Chat
-        </Link>
-        <span className="mx-2">›</span>
-        <span>
-          Surah {chapter} · Ayah {verse}
-        </span>
-      </nav>
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
 
-      {/* Surah banner */}
-      <div>
-        <h1 className="text-2xl font-bold text-emerald-300">
-          {surahRow.name_en}
-        </h1>
-        <p className="text-sm text-slate-400">
-          Surah {chapter} · {surahRow.ayah_count} ayahs
-        </p>
-      </div>
+      <div className="max-w-2xl mx-auto px-4 py-8 flex flex-col gap-8">
+        {/* Breadcrumb */}
+        <nav className="text-sm text-slate-400 flex items-center gap-1">
+          <Link href="/" className="hover:text-emerald-400 transition-colors">
+            Home
+          </Link>
+          <span className="mx-1">›</span>
+          <Link href={`/${ch}`} className="hover:text-emerald-400 transition-colors">
+            {surahRow.name_en}
+          </Link>
+          <span className="mx-1">›</span>
+          <span>Ayah {vs}</span>
+        </nav>
 
-      {/* Ayah card */}
-      <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6">
-        <div className="flex items-start justify-between gap-4 mb-4">
-          <span className="shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-emerald-700 text-emerald-100 font-bold text-sm">
-            {verse}
-          </span>
-          <p className="flex-1 text-lg leading-relaxed text-slate-100 font-medium">
+        {/* Surah title */}
+        <div>
+          <h1 className="text-2xl font-bold text-emerald-300">
+            Surah {surahRow.name_en}
+          </h1>
+          <p className="text-sm text-slate-400">
+            {ch}:{vs} · {surahRow.ayah_count} ayahs
+          </p>
+        </div>
+
+        {/* Arabic frame */}
+        {ayah.arabic_text && (
+          <AyahFrame arabic={ayah.arabic_text} surah={ch} ayah={vs} />
+        )}
+
+        {/* English translation */}
+        <div className="bg-slate-800/60 border border-slate-700 rounded-2xl p-6">
+          <p className="text-base sm:text-lg leading-relaxed text-slate-100">
             {ayah.display_text}
           </p>
-        </div>
-        <p className="text-xs text-slate-500">{ayah.reference} · The Clear Quran</p>
-      </div>
-
-      {/* Surah context */}
-      {llm.surah_context && (
-        <div className="bg-emerald-900/30 border border-emerald-800 rounded-xl p-4">
-          <p className="text-xs font-semibold text-emerald-400 uppercase tracking-widest mb-1">
-            Surah Context
+          <p className="mt-3 text-xs text-slate-500">
+            {ayah.reference} · The Clear Quran (Mustafa Khattab)
           </p>
-          <p className="text-sm text-slate-300 leading-relaxed">{llm.surah_context}</p>
         </div>
-      )}
 
-      {/* Explanation */}
-      <div>
-        <h2 className="text-base font-semibold text-slate-200 mb-2">Explanation</h2>
-        <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
-          {llm.explanation}
-        </p>
+        {/* Navigation */}
+        <nav className="flex items-center justify-between gap-4">
+          {prevVerse ? (
+            <Link
+              href={`/${ch}/${prevVerse}`}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 hover:border-emerald-600 text-sm text-slate-300 transition-colors"
+            >
+              ← Ayah {prevVerse}
+            </Link>
+          ) : (
+            <span />
+          )}
+          <Link
+            href={`/${ch}`}
+            className="text-xs text-slate-400 hover:text-emerald-400 transition-colors"
+          >
+            All ayahs ↑
+          </Link>
+          {nextVerse ? (
+            <Link
+              href={`/${ch}/${nextVerse}`}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 hover:border-emerald-600 text-sm text-slate-300 transition-colors"
+            >
+              Ayah {nextVerse} →
+            </Link>
+          ) : (
+            <span />
+          )}
+        </nav>
       </div>
-
-      {/* Related ayahs */}
-      {llm.related_references.length > 0 && (
-        <div>
-          <h2 className="text-base font-semibold text-slate-200 mb-3">Related Ayahs</h2>
-          <div className="flex flex-col gap-2">
-            {llm.related_references.map((ref) => {
-              const a = relatedMap.get(ref);
-              if (!a) return null;
-              const [s, v] = ref.split(':');
-              return (
-                <Link
-                  key={ref}
-                  href={`/${s}/${v}`}
-                  className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 hover:border-emerald-600 transition-colors"
-                >
-                  <span className="text-xs font-semibold text-emerald-400">{ref}</span>
-                  <p className="text-xs text-slate-400 mt-1 line-clamp-2">{a.display_text}</p>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Source policy */}
-      <p className="text-xs text-slate-600 text-center">Source: The Clear Quran only</p>
-    </div>
+    </>
   );
 }

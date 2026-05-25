@@ -41,6 +41,7 @@ export interface AyahRow {
   text: string;
   display_text: string;
   tokens_count: number;
+  arabic_text?: string;
 }
 
 export interface SurahRow {

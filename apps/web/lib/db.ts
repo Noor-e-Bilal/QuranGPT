@@ -363,6 +363,20 @@ export function getAyahsByReferences(references: string[]): AyahRow[] {
   return toPlainArray<AyahRow>(rows);
 }
 
+export function getAllSurahs(): SurahRow[] {
+  const rows = getDb()
+    .prepare('SELECT * FROM quran_surah ORDER BY surah')
+    .all();
+  return toPlainArray<SurahRow>(rows);
+}
+
+export function getAyahsBySurah(chapter: number): AyahRow[] {
+  const rows = getDb()
+    .prepare('SELECT * FROM quran_ayah WHERE surah = ? ORDER BY ayah')
+    .all(chapter);
+  return toPlainArray<AyahRow>(rows);
+}
+
 export function checkDbHealth(): boolean {
   try {
     getDb().prepare('SELECT 1 FROM quran_ayah LIMIT 1').get();
