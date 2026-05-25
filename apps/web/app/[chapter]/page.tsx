@@ -93,12 +93,12 @@ export default async function SurahPage({ params }: Props) {
                 <span className="shrink-0 w-8 h-8 flex items-center justify-center rounded-full bg-emerald-800 text-emerald-100 text-xs font-bold group-hover:bg-emerald-600 transition-colors">
                   {a.ayah}
                 </span>
-                <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex flex-col gap-2 min-w-0 flex-1">
                   {a.arabic_text && (
                     <p
                       dir="rtl"
                       lang="ar"
-                      className="text-lg leading-relaxed text-slate-200 line-clamp-2"
+                      className="text-2xl sm:text-3xl leading-relaxed text-slate-100 text-right line-clamp-2"
                       style={{ fontFamily: "'KFGQPCUthmanicScriptHAFS', serif" }}
                     >
                       {a.arabic_text}
