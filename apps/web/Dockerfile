@@ -9,7 +9,10 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY apps/web/ .
+# DB must be present at build time so generateStaticParams can open it
+COPY data/quran.db /app/data/quran.db
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV DB_PATH=/app/data/quran.db
 RUN npm run build
 
 # ── Stage 3: Production runner ────────────────────────────────────────────────
