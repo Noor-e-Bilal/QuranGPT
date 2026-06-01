@@ -59,45 +59,39 @@ class BayyinahScraper:
     # ─── Navigation ──────────────────────────────────────────────────────────
 
     def navigate_to_surahs_tab(self) -> None:
-        """Tap the Surahs tab in the bottom nav bar."""
+        """Tap the Surahs tab in the bottom nav bar, backing out of any reading view first."""
+        # Press back up to 3 times to reach a screen where the Surahs tab is visible
+        for _ in range(3):
+            if self.d(text=cfg.SURAHS_TAB_TEXT).exists(timeout=2):
+                break
+            self.d.press("back")
+            time.sleep(cfg.BACK_PAUSE)
+
         tab = self.d(text=cfg.SURAHS_TAB_TEXT)
-        if tab.exists(timeout=5):
-            tab.click()
-            time.sleep(0.8)
-        else:
+        if not tab.exists(timeout=5):
             raise RuntimeError(
                 f"Could not find '{cfg.SURAHS_TAB_TEXT}' tab. "
                 "Run --discover to inspect the UI hierarchy."
             )
+        tab.click()
+        time.sleep(0.8)
 
     def open_surah(self, surah_number: int) -> None:
         """
-        Navigate to a specific surah.
-        Uses the search box for reliability — avoids infinite scroll through 114 items.
+        Navigate to a specific surah from the Surahs tab list.
+        Scrolls to the surah name and taps it.
         """
         name = self.SURAH_ENGLISH_NAMES[surah_number - 1]
         print(f"[scraper] Opening Surah {surah_number}: {name}")
 
-        # Use the search box
-        search = self.d(text=cfg.SURAH_SEARCH_HINT)
-        if not search.exists(timeout=5):
-            # May already be on the list; try scrolling to top first
-            self.d.press("back")
-            time.sleep(cfg.BACK_PAUSE)
-            self.navigate_to_surahs_tab()
-            search = self.d(text=cfg.SURAH_SEARCH_HINT)
+        # Scroll the list to find the surah name, then tap it
+        if not self.d(text=name).exists(timeout=2):
+            self.d(scrollable=True).scroll.to(text=name)
 
-        search.click()
-        time.sleep(0.4)
-        self.d.clear_text()
-        self.d.send_keys(name)
-        time.sleep(0.8)
-
-        # Tap the first matching result
-        result = self.d(textContains=name)
-        if not result.exists(timeout=5):
-            raise RuntimeError(f"Surah '{name}' not found in search results")
-        result.click()
+        el = self.d(text=name)
+        if not el.exists(timeout=5):
+            raise RuntimeError(f"Surah '{name}' not found in Surahs list")
+        el.click()
         time.sleep(1.0)
 
     # ─── Ayah interaction ────────────────────────────────────────────────────
@@ -148,28 +142,33 @@ class BayyinahScraper:
     def _autodetect_verse_markers(self) -> list[tuple[int, int, int]]:
         """
         Walk the UI hierarchy and find small elements whose text is a
-        short number string (likely verse number circles).
+        short Arabic-Indic or ASCII number string (verse number circles).
+        Uses proper XML parsing to handle single-quoted attributes.
         """
         results = []
         try:
-            hierarchy = self.d.dump_hierarchy(compressed=False)
-            for node in hierarchy.split("<node"):
-                text = _attr(node, "text")
+            import xml.etree.ElementTree as ET
+            hierarchy = self.d.dump_hierarchy()
+            root = ET.fromstring(hierarchy)
+            screen_h = self.d.info.get("displayHeight", 2412)
+            bottom_cutoff = int(screen_h * 0.88)   # ignore bottom nav / status bar
+            for node in root.iter():
+                text = node.attrib.get("text", "")
                 if not text:
                     continue
                 n = _parse_num(text)
                 if n is None:
                     continue
-                bounds_str = _attr(node, "bounds")
+                bounds_str = node.attrib.get("bounds", "")
                 b = _parse_bounds(bounds_str)
                 if b is None:
                     continue
                 w = b[2] - b[0]
                 h = b[3] - b[1]
-                # Verse number circles are small (< 80px wide)
-                if 5 < w < 80 and 5 < h < 80:
+                cy = (b[1] + b[3]) // 2
+                # Verse number circles are narrow, and above the bottom UI bar
+                if 4 < w < 80 and 4 < h < 80 and cy < bottom_cutoff:
                     cx = (b[0] + b[2]) // 2
-                    cy = (b[1] + b[3]) // 2
                     results.append((n, cx, cy))
         except Exception as e:
             print(f"[scraper] Warning: autodetect failed — {e}")
@@ -184,32 +183,69 @@ class BayyinahScraper:
         return appeared
 
     def close_popup(self) -> None:
-        """Close the description bottom sheet."""
-        # Try close button by content description first
-        close = self.d(description=cfg.POPUP_CLOSE_BUTTON_DESC)
-        if close.exists(timeout=2):
-            close.click()
-        elif cfg.POPUP_CLOSE_BUTTON_TEXT:
-            self.d(text=cfg.POPUP_CLOSE_BUTTON_TEXT).click()
-        else:
-            # Fallback: press back
-            self.d.press("back")
-        time.sleep(0.5)
+        """Close the description bottom sheet by pressing Back."""
+        self.d.press("back")
+        # Wait for popup to finish closing (Concise tab should disappear)
+        for _ in range(10):
+            time.sleep(0.3)
+            if not self.d(text=cfg.POPUP_CONCISE_TAB_TEXT).exists(timeout=0.5):
+                break
 
     # ─── Page navigation ─────────────────────────────────────────────────────
 
     def swipe_next_quran_page(self) -> None:
-        """
-        Swipe right to advance to the next Quran page (mushaf style).
-        In RTL mushaf, swiping right = forward (next page).
-        """
+        """Swipe to the next Quran page (right swipe = forward in RTL mushaf)."""
         info = self.d.info
         w = info["displayWidth"]
         h = info["displayHeight"]
-        mid_y = h // 2
-        # Swipe from left edge to right edge
-        self.d.swipe(w * 0.15, mid_y, w * 0.85, mid_y, duration=0.4)
+        self.d.swipe(w * 0.15, h // 2, w * 0.85, h // 2, duration=0.4)
         time.sleep(cfg.PAGE_SWIPE_PAUSE)
+
+    def swipe_prev_quran_page(self) -> None:
+        """Swipe to the previous Quran page (left swipe = backward in RTL mushaf)."""
+        info = self.d.info
+        w = info["displayWidth"]
+        h = info["displayHeight"]
+        self.d.swipe(w * 0.85, h // 2, w * 0.15, h // 2, duration=0.4)
+        time.sleep(cfg.PAGE_SWIPE_PAUSE)
+
+    def _navigate_to_ayah_marker(self, target_ayah: int, surah: int, max_swipes: int = 50) -> tuple[int, int] | None:
+        """
+        Navigate the Quran reading view until target_ayah's marker is visible.
+
+        Swipes forward if the current page is before the target, backward if
+        we've overshot. Re-opens the surah after 25 failed swipes as a last resort.
+
+        Returns (cx, cy) of the marker, or None if not found.
+        """
+        reopened = False
+        for attempt in range(max_swipes):
+            markers = self.find_verse_markers()
+
+            if markers:
+                hit = next((m for m in markers if m[0] == target_ayah), None)
+                if hit:
+                    return hit[1], hit[2]
+
+                # Determine direction: if smallest visible marker > target we've overshot
+                min_visible = min(m[0] for m in markers)
+                if min_visible > target_ayah:
+                    self.swipe_prev_quran_page()
+                else:
+                    self.swipe_next_quran_page()
+            else:
+                # No markers at all — swipe forward (might be a decoration/bismillah page)
+                self.swipe_next_quran_page()
+
+            # Mid-way fallback: re-open surah to reset position
+            if attempt == 24 and not reopened:
+                print(f"  [{surah}:{target_ayah}] ⚠ 25 swipes without finding marker — re-opening surah")
+                self.navigate_to_surahs_tab()
+                self.open_surah(surah)
+                time.sleep(1.0)
+                reopened = True
+
+        return None
 
     # ─── Discover mode ───────────────────────────────────────────────────────
 
@@ -261,30 +297,15 @@ class BayyinahScraper:
                     current_ayah += 1
                     continue
 
-                # Find all visible verse markers
-                markers = self.find_verse_markers()
-                if not markers:
-                    print(f"  [{surah}:{current_ayah}] No markers found on screen — trying swipe")
-                    self.swipe_next_quran_page()
-                    markers = self.find_verse_markers()
-
-                if not markers:
-                    print(f"  [{surah}:{current_ayah}] ⚠ Still no markers — dumping hierarchy for inspection")
-                    self.dump_hierarchy(f"debug_{surah}_{current_ayah}.xml")
-                    raise RuntimeError(
-                        f"Cannot find verse markers at Surah {surah}:{current_ayah}. "
-                        "Check debug_*.xml and update VERSE_MARKER_RESOURCE_ID in config.py."
-                    )
-
-                # Find the marker for current_ayah
-                target = next((m for m in markers if m[0] == current_ayah), None)
-                if target is None:
-                    # Ayah not visible on this page — swipe to next
-                    self.swipe_next_quran_page()
+                # Find all visible verse markers and navigate to the target ayah
+                target_coords = self._navigate_to_ayah_marker(current_ayah, surah)
+                if target_coords is None:
+                    print(f"  [{surah}:{current_ayah}] ⚠ Could not find marker after max swipes — skipping")
+                    current_ayah += 1
                     continue
 
-                ayah_num, cx, cy = target
-                print(f"  [{surah}:{ayah_num}] Long-pressing…", end=" ", flush=True)
+                cx, cy = target_coords
+                print(f"  [{surah}:{current_ayah}] Long-pressing…", end=" ", flush=True)
 
                 popup_appeared = self.long_press_ayah(cx, cy)
                 if not popup_appeared:
@@ -296,7 +317,7 @@ class BayyinahScraper:
                         current_ayah += 1
                         continue
 
-                content = extractor.extract(self.d, ayah_num)
+                content = extractor.extract(self.d, current_ayah)
                 self.close_popup()
 
                 if content is None:
@@ -313,7 +334,7 @@ class BayyinahScraper:
 
                 total_scraped += (content.end_ayah - content.start_ayah + 1)
                 print(
-                    f"✓ range={content.range_str or str(ayah_num)} "
+                    f"✓ range={content.range_str or str(current_ayah)} "
                     f"({len(content.raw_text)} chars)  total={total_scraped}"
                 )
 

@@ -8,30 +8,22 @@ To find the correct package name and resource IDs for your device:
 """
 
 # ─── App identity ────────────────────────────────────────────────────────────
-# Find yours: adb shell pm list packages | grep -i bayyinah
-APP_PACKAGE = "tv.bayyinah.quran"
+APP_PACKAGE = "com.ayahbyayah.android"
 
 # ─── Bottom nav ──────────────────────────────────────────────────────────────
-# Text on the Surahs tab (matches the screenshot: "Surahs")
 SURAHS_TAB_TEXT = "Surahs"
 
-# ─── Surah list page ─────────────────────────────────────────────────────────
-SURAH_SEARCH_HINT = "Search surahs..."
-
 # ─── Quran reader page (mushaf view) ─────────────────────────────────────────
-# Resource ID of the ayah verse-number markers (circles with numbers).
-# Leave empty to auto-discover via dump_hierarchy (--discover mode).
-# Example: "tv.bayyinah.quran:id/verse_number"
+# Verse markers are Arabic-Indic numerals (١٢٣...) embedded in the Quran text.
+# Auto-detection (Strategy 3) finds them as small TextViews with numeral content.
 VERSE_MARKER_RESOURCE_ID = ""
-
-# Fallback: content-description prefix used on verse markers
-# e.g. "Verse 5" or "آية ٥"
 VERSE_MARKER_CONTENT_DESC_PREFIX = ""
 
 # ─── Popup / bottom sheet ────────────────────────────────────────────────────
 POPUP_CONCISE_TAB_TEXT = "Concise"
-POPUP_CLOSE_BUTTON_DESC = "Close"       # content-description on the ✕ button
-POPUP_CLOSE_BUTTON_TEXT = ""            # fallback if no desc
+# No close button in the app — the popup is dismissed by pressing Back.
+POPUP_CLOSE_BUTTON_DESC = ""
+POPUP_CLOSE_BUTTON_TEXT = ""
 
 # ─── Timing (seconds) ────────────────────────────────────────────────────────
 POPUP_APPEAR_TIMEOUT = 6        # max wait for popup after long-press
