@@ -1,0 +1,2 @@
+uiautomator2>=2.16.0
+tqdm>=4.66.0
