@@ -151,7 +151,7 @@ class BayyinahScraper:
             hierarchy = self.d.dump_hierarchy()
             root = ET.fromstring(hierarchy)
             screen_h = self.d.info.get("displayHeight", 2412)
-            bottom_cutoff = int(screen_h * 0.88)   # ignore bottom nav / status bar
+            bottom_cutoff = self._detect_bottom_nav_top(root, screen_h)
             for node in root.iter():
                 text = node.attrib.get("text", "")
                 if not text:
@@ -173,6 +173,26 @@ class BayyinahScraper:
         except Exception as e:
             print(f"[scraper] Warning: autodetect failed — {e}")
         return results
+
+    @staticmethod
+    def _detect_bottom_nav_top(root, screen_h: int) -> int:
+        """
+        Locate the bottom navigation bar by finding the 'Page N' element
+        and return its top y-coordinate.  This is used as the marker cutoff
+        so ayahs at the very bottom of the reading area (like ayah 29 on
+        Al-Baqarah page 5) are not accidentally excluded.
+
+        Falls back to 92% of screen height if the bar cannot be found.
+        """
+        import re
+        for node in root.iter():
+            t = node.attrib.get("text", "")
+            b = node.attrib.get("bounds", "")
+            if b and re.search(r'\bPage\s+\d+', t):
+                nums = list(map(int, re.findall(r'\d+', b)))
+                if len(nums) >= 2 and nums[1] > screen_h * 0.70:
+                    return nums[1]   # top edge of the bottom nav bar
+        return int(screen_h * 0.92)  # generous fallback
 
     def long_press_ayah(self, cx: int, cy: int) -> bool:
         """Long-press at (cx, cy) and wait for the popup to appear."""
