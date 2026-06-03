@@ -27,7 +27,7 @@ class BayyinahScraper:
         "Al-Fatihah", "Al-Baqarah", "Ali 'Imran", "An-Nisa", "Al-Ma'idah",
         "Al-An'am", "Al-A'raf", "Al-Anfal", "At-Tawbah", "Yunus",
         "Hud", "Yusuf", "Ar-Ra'd", "Ibrahim", "Al-Hijr",
-        "An-Nahl", "Al-Isra", "Al-Kahf", "Maryam", "Ta-Ha",
+        "An-Nahl", "Al-Isra", "Al-Kahf", "Maryam", "Taha",
         "Al-Anbiya", "Al-Hajj", "Al-Mu'minun", "An-Nur", "Al-Furqan",
         "Ash-Shu'ara", "An-Naml", "Al-Qasas", "Al-'Ankabut", "Ar-Rum",
         "Luqman", "As-Sajdah", "Al-Ahzab", "Saba", "Fatir",
