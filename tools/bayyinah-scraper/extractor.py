@@ -27,6 +27,9 @@ class PopupContent:
 _GROUPED_PATTERN = re.compile(r"Ayahs?\s+(\d+)\s*[-–—\u2011\u2012\u2013\u2014]\s*(\d+)", re.IGNORECASE)
 _SINGLE_PATTERN  = re.compile(r"Ayah\s+(\d+)", re.IGNORECASE)
 
+# Matches "Ayah N" as a standalone heading (surrounded by newlines or start/end).
+_AYAH_HEADING = re.compile(r"(?:^|\n\n)(Ayah\s+(\d+)(?:\n|$))", re.IGNORECASE)
+
 
 def _parse_range(text: str) -> tuple[int | None, int | None, str | None]:
     m = _GROUPED_PATTERN.search(text)
@@ -38,6 +41,41 @@ def _parse_range(text: str) -> tuple[int | None, int | None, str | None]:
         n = int(m.group(1))
         return n, n, None
     return None, None, None
+
+
+def split_ayah_sections(text: str, start_ayah: int, end_ayah: int) -> dict[int, str]:
+    """
+    Split a grouped popup description into per-ayah slices.
+
+    The popup text structure (joined with double-newlines):
+        Surah ...: Ayahs X-Y            ← header (discarded)
+        Ayah X                          ← heading
+        [Arabic text]
+        [description paragraphs...]
+        Ayah X+1                        ← heading
+        [Arabic text]
+        [description paragraphs...]
+        ...
+
+    Returns {ayah_number: section_text} for each ayah in [start_ayah, end_ayah].
+    Falls back to the full text for every ayah if splitting fails.
+    """
+    # Split at every "\n\nAyah N\n" boundary, keeping the heading in each part.
+    # The lookahead ensures "Ayah N" stays at the start of its part.
+    parts = re.split(r"\n\n(?=Ayah\s+\d+(?:\n|$))", text, flags=re.IGNORECASE)
+
+    sections: dict[int, str] = {}
+    for part in parts:
+        m = re.match(r"Ayah\s+(\d+)", part.strip(), re.IGNORECASE)
+        if m:
+            ayah_num = int(m.group(1))
+            sections[ayah_num] = part.strip()
+
+    if not sections:
+        # Splitting failed — give every ayah the full text (safe fallback)
+        return {a: text for a in range(start_ayah, end_ayah + 1)}
+
+    return sections
 
 
 # ─── Main extraction ─────────────────────────────────────────────────────────

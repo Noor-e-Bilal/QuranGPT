@@ -345,21 +345,27 @@ class BayyinahScraper:
                     current_ayah += 1
                     continue
 
-                # Store one row per ayah covered by this popup
-                for a in range(content.start_ayah, content.end_ayah + 1):
-                    if a <= ayah_count:
-                        db.upsert_description(
-                            self.conn, surah, a, content.raw_text, content.range_str
-                        )
+                # Extract only the current ayah's slice.
+                # Always attempt splitting by "Ayah N" headings — even when range_str
+                # is None, the dump might contain adjacent ayah sections if they were
+                # on-screen when the popup opened.
+                sections = extractor.split_ayah_sections(
+                    content.raw_text, content.start_ayah, content.end_ayah
+                )
+                ayah_text = sections.get(current_ayah, content.raw_text)
 
-                total_scraped += (content.end_ayah - content.start_ayah + 1)
-                print(
-                    f"✓ range={content.range_str or str(current_ayah)} "
-                    f"({len(content.raw_text)} chars)  total={total_scraped}"
+                db.upsert_description(
+                    self.conn, surah, current_ayah, ayah_text, content.range_str
                 )
 
-                prog.save(surah, content.end_ayah)
-                current_ayah = content.end_ayah + 1
+                total_scraped += 1
+                print(
+                    f"✓ [{surah}:{current_ayah}] range={content.range_str or 'single'} "
+                    f"({len(ayah_text)} chars)  total={total_scraped}"
+                )
+
+                prog.save(surah, current_ayah)
+                current_ayah += 1  # always advance by 1 — never skip grouped ayahs
                 time.sleep(cfg.AYAH_PAUSE)
 
             print(f"[scraper] ✓ Surah {surah} complete")
