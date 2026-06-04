@@ -9,9 +9,12 @@ Usage examples:
     python run.py --discover            # dump UI hierarchy to XML (for setup)
     python run.py --status              # show how many ayahs are scraped
     python run.py --device SERIAL       # specify ADB device serial
+    python run.py --refetch             # re-scrape all ayahs in refetch_list.json
+    python run.py --refetch --resume    # resume an interrupted refetch run
 """
 
 import argparse
+import json
 import sys
 
 import config as cfg
@@ -23,13 +26,14 @@ def main():
     parser = argparse.ArgumentParser(
         description="Bayyinah app scraper — extracts Concise tafseer for all 6,236 ayahs"
     )
-    parser.add_argument("--resume",   action="store_true", help="Resume from progress.json")
+    parser.add_argument("--resume",   action="store_true", help="Resume from progress.json (or refetch_progress.json with --refetch)")
     parser.add_argument("--reset",    action="store_true", help="Delete progress and start from Surah 1:1")
     parser.add_argument("--surah",    type=int, default=None, help="Start at this surah (1–114)")
     parser.add_argument("--ayah",     type=int, default=None, help="Start at this ayah (requires --surah)")
     parser.add_argument("--discover", action="store_true", help="Dump UI hierarchy and screenshot to XML/PNG")
     parser.add_argument("--status",   action="store_true", help="Show DB progress and exit")
     parser.add_argument("--device",   type=str, default=None, help="ADB device serial (optional)")
+    parser.add_argument("--refetch",  action="store_true", help="Re-scrape ayahs listed in refetch_list.json")
     args = parser.parse_args()
 
     # ── status ────────────────────────────────────────────────────────────────
@@ -48,6 +52,29 @@ def main():
     # ── reset ─────────────────────────────────────────────────────────────────
     if args.reset:
         prog.reset()
+        sys.exit(0)
+
+    # ── refetch mode ──────────────────────────────────────────────────────────
+    if args.refetch:
+        if not cfg.REFETCH_LIST_FILE.exists():
+            print(f"[run] ERROR: {cfg.REFETCH_LIST_FILE} not found. Run the audit script first.")
+            sys.exit(1)
+
+        refetch_data = json.loads(cfg.REFETCH_LIST_FILE.read_text())
+        refetch_list = [(entry["surah"], entry["ayah"]) for entry in refetch_data]
+
+        resume_after = None
+        if args.resume:
+            rs, ra = prog.load_refetch()
+            if rs:
+                resume_after = (rs, ra)
+                print(f"[run] Resuming refetch after Surah {rs}:{ra}")
+
+        print(f"[run] Refetch mode — {len(refetch_list)} ayahs in list")
+
+        from scraper import BayyinahScraper
+        scraper = BayyinahScraper(device_serial=args.device)
+        scraper.run_refetch(refetch_list, resume_after=resume_after)
         sys.exit(0)
 
     # ── determine start point ─────────────────────────────────────────────────

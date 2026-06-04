@@ -28,11 +28,11 @@ class BayyinahScraper:
         "Al-An'am", "Al-A'raf", "Al-Anfal", "At-Tawbah", "Yunus",
         "Hud", "Yusuf", "Ar-Ra'd", "Ibrahim", "Al-Hijr",
         "An-Nahl", "Al-Isra", "Al-Kahf", "Maryam", "Taha",
-        "Al-Anbiya", "Al-Hajj", "Al-Mu'minun", "An-Nur", "Al-Furqan",
+        "Al-Anbya", "Al-Hajj", "Al-Mu'minun", "An-Nur", "Al-Furqan",
         "Ash-Shu'ara", "An-Naml", "Al-Qasas", "Al-'Ankabut", "Ar-Rum",
         "Luqman", "As-Sajdah", "Al-Ahzab", "Saba", "Fatir",
         "Ya-Sin", "As-Saffat", "Sad", "Az-Zumar", "Ghafir",
-        "Fussilat", "Ash-Shura", "Az-Zukhruf", "Ad-Dukhan", "Al-Jathiyah",
+        "Fussilat", "Ash-Shuraa", "Az-Zukhruf", "Ad-Dukhan", "Al-Jathiyah",
         "Al-Ahqaf", "Muhammad", "Al-Fath", "Al-Hujurat", "Qaf",
         "Adh-Dhariyat", "At-Tur", "An-Najm", "Al-Qamar", "Ar-Rahman",
         "Al-Waqi'ah", "Al-Hadid", "Al-Mujadila", "Al-Hashr", "Al-Mumtahanah",
@@ -42,7 +42,7 @@ class BayyinahScraper:
         "Al-Insan", "Al-Mursalat", "An-Naba", "An-Nazi'at", "'Abasa",
         "At-Takwir", "Al-Infitar", "Al-Mutaffifin", "Al-Inshiqaq", "Al-Buruj",
         "At-Tariq", "Al-A'la", "Al-Ghashiyah", "Al-Fajr", "Al-Balad",
-        "Ash-Shams", "Al-Layl", "Ad-Duha", "Ash-Sharh", "At-Tin",
+        "Ash-Shams", "Al-Layl", "Ad-Duhaa", "Ash-Sharh", "At-Tin",
         "Al-'Alaq", "Al-Qadr", "Al-Bayyinah", "Az-Zalzalah", "Al-'Adiyat",
         "Al-Qari'ah", "At-Takathur", "Al-'Asr", "Al-Humazah", "Al-Fil",
         "Quraysh", "Al-Ma'un", "Al-Kawthar", "Al-Kafirun", "An-Nasr",
@@ -286,6 +286,113 @@ class BayyinahScraper:
         current_pkg = self.d.app_current().get("package", "unknown")
         print(f"[discover] Current app package: {current_pkg}")
         print(f"           Update APP_PACKAGE in config.py if different from '{cfg.APP_PACKAGE}'")
+
+    # ─── Targeted refetch ────────────────────────────────────────────────────
+
+    def run_refetch(
+        self,
+        refetch_list: list[tuple[int, int]],
+        resume_after: tuple[int, int] | None = None,
+    ) -> None:
+        """
+        Re-scrape a specific list of (surah, ayah) pairs in order.
+
+        For each ayah, the existing DB record is deleted first so a fresh
+        description is stored.  Progress is saved after every ayah so the
+        run can be interrupted and resumed via resume_after=(surah, ayah).
+
+        Args:
+            refetch_list:   Sorted list of (surah, ayah) pairs to fetch.
+            resume_after:   If given, skip all pairs up to and including
+                            this (surah, ayah) before starting work.
+        """
+        from itertools import groupby
+
+        # Optionally skip already-done entries
+        pending = refetch_list
+        if resume_after:
+            rs, ra = resume_after
+            skip_until_done = False
+            trimmed = []
+            for s, a in refetch_list:
+                if (s, a) == (rs, ra):
+                    skip_until_done = True
+                    continue
+                if not skip_until_done or (s > rs) or (s == rs and a > ra):
+                    trimmed.append((s, a))
+            pending = trimmed
+
+        total = len(pending)
+        done = 0
+        print(f"[refetch] {total} ayahs to re-scrape")
+
+        self.navigate_to_surahs_tab()
+
+        # Group by surah so we open each surah only once
+        for surah, group in groupby(pending, key=lambda x: x[0]):
+            ayahs = [a for _, a in group]
+            surah_name = db.get_surah_name(self.conn, surah)
+            print(f"\n[refetch] ── Surah {surah}: {surah_name} ({len(ayahs)} ayahs to refetch) ──")
+
+            self.open_surah(surah)
+            time.sleep(1.0)
+
+            for ayah in ayahs:
+                # Delete stale record so upsert stores fresh data
+                db.delete_description(self.conn, surah, ayah)
+
+                target_coords = self._navigate_to_ayah_marker(ayah, surah)
+                if target_coords is None:
+                    print(f"  [{surah}:{ayah}] ⚠ marker not found after max swipes — skipping")
+                    prog.save_refetch(surah, ayah)
+                    done += 1
+                    continue
+
+                cx, cy = target_coords
+                print(f"  [{surah}:{ayah}] Long-pressing…", end=" ", flush=True)
+
+                popup_appeared = self.long_press_ayah(cx, cy)
+                if not popup_appeared:
+                    time.sleep(1.0)
+                    popup_appeared = self.long_press_ayah(cx, cy)
+                    if not popup_appeared:
+                        print("⚠ popup never appeared — skipping")
+                        prog.save_refetch(surah, ayah)
+                        done += 1
+                        continue
+
+                content = extractor.extract(self.d, ayah)
+                self.close_popup()
+
+                if content is None:
+                    print("⚠ extraction failed — skipping")
+                    prog.save_refetch(surah, ayah)
+                    done += 1
+                    continue
+
+                sections = extractor.split_ayah_sections(
+                    content.raw_text, content.start_ayah, content.end_ayah
+                )
+                ayah_text = sections.get(ayah, content.raw_text)
+
+                db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
+
+                done += 1
+                print(
+                    f"✓ [{surah}:{ayah}] range={content.range_str or 'single'} "
+                    f"({len(ayah_text)} chars)  done={done}/{total}"
+                )
+
+                prog.save_refetch(surah, ayah)
+                time.sleep(cfg.AYAH_PAUSE)
+
+            print(f"[refetch] ✓ Surah {surah} done")
+            self.d.press("back")
+            time.sleep(cfg.BACK_PAUSE)
+            self.navigate_to_surahs_tab()
+
+        print(f"\n[refetch] ✅ Done! Re-scraped {done}/{total} ayahs.")
+        self.conn.close()
 
     # ─── Main loop ───────────────────────────────────────────────────────────
 

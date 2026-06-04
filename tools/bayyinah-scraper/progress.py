@@ -28,6 +28,29 @@ def save(surah: int, ayah: int) -> None:
     cfg.PROGRESS_FILE.write_text(json.dumps({"surah": surah, "ayah": ayah}))
 
 
+def save_refetch(surah: int, ayah: int) -> None:
+    """Record the last completed (surah, ayah) during a refetch run."""
+    cfg.REFETCH_PROGRESS_FILE.write_text(json.dumps({"surah": surah, "ayah": ayah}))
+
+
+def load_refetch() -> tuple[int, int]:
+    """Return (surah, ayah) of the last completed refetch entry, or (0, 0)."""
+    if not cfg.REFETCH_PROGRESS_FILE.exists():
+        return 0, 0
+    try:
+        data = json.loads(cfg.REFETCH_PROGRESS_FILE.read_text())
+        return int(data["surah"]), int(data["ayah"])
+    except (KeyError, ValueError, json.JSONDecodeError):
+        return 0, 0
+
+
+def reset_refetch() -> None:
+    """Delete refetch progress so the next --refetch run starts from the top."""
+    if cfg.REFETCH_PROGRESS_FILE.exists():
+        cfg.REFETCH_PROGRESS_FILE.unlink()
+        print("[progress] Refetch progress reset")
+
+
 def reset() -> None:
     """Delete progress file to restart from Surah 1:1."""
     if cfg.PROGRESS_FILE.exists():

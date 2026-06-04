@@ -77,6 +77,14 @@ def scraped_count(conn: sqlite3.Connection) -> int:
 
 # ─── Writes ──────────────────────────────────────────────────────────────────
 
+def delete_description(conn: sqlite3.Connection, surah: int, ayah: int) -> None:
+    conn.execute(
+        "DELETE FROM ayah_descriptions WHERE surah = ? AND ayah = ?",
+        (surah, ayah),
+    )
+    conn.commit()
+
+
 def upsert_description(
     conn: sqlite3.Connection,
     surah: int,

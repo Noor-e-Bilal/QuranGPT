@@ -40,3 +40,5 @@ REPO_ROOT = pathlib.Path(__file__).parent.parent.parent
 SOURCE_DB = REPO_ROOT / "data" / "quran.db"
 OUTPUT_DB = REPO_ROOT / "data" / "quran-with-tafsir.db"
 PROGRESS_FILE = pathlib.Path(__file__).parent / "progress.json"
+REFETCH_PROGRESS_FILE = pathlib.Path(__file__).parent / "refetch_progress.json"
+REFETCH_LIST_FILE = pathlib.Path(__file__).parent / "refetch_list.json"
