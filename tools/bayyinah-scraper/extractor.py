@@ -81,8 +81,15 @@ def split_ayah_sections(text: str, start_ayah: int, end_ayah: int) -> dict[int, 
 
 # ─── Main extraction ─────────────────────────────────────────────────────────
 
-def _get_popup_scrollable_bounds(root: ET.Element) -> tuple[int, int, int, int] | None:
-    """Return (x0, y0, x1, y1) of the popup content scrollable area, or None."""
+def _last_popup_scrollable_bounds(root: ET.Element) -> tuple[int, int, int, int] | None:
+    """
+    Return (x0, y0, x1, y1) of the popup content scrollable area.
+
+    Android renders the popup ABOVE the background Quran reader, so the popup's
+    RecyclerView appears LATER in the accessibility tree.  We walk the entire
+    tree and keep the LAST match so we target the popup, not the background.
+    """
+    result = None
     for node in root.iter():
         if node.attrib.get("scrollable") != "true":
             continue
@@ -92,57 +99,103 @@ def _get_popup_scrollable_bounds(root: ET.Element) -> tuple[int, int, int, int] 
             continue
         x0, y0, x1, y1 = nums[:4]
         if y0 > 100 and (y1 - y0) > 400:
-            return (x0, y0, x1, y1)
-    return None
+            result = (x0, y0, x1, y1)  # keep updating — want the LAST one
+    return result
 
 
 def _scroll_popup_to_ayah(
-    d, target_ayah: int, max_scrolls: int = 30
+    d, target_ayah: int, max_scrolls: int = 20
 ) -> tuple[bool, ET.Element | None]:
     """
     Scroll the popup's content area until the heading for target_ayah is visible.
 
-    Uses bounds-aware swipe gestures so only the popup content area is scrolled,
-    not the background Quran reading view.
+    Strategy (in order):
+      1. UIAutomator2's native scroll.to(text=) — targets the correct scrollable
+         automatically using the accessibility framework.
+      2. Manual swipe against the LAST scrollable in the hierarchy (popup layers
+         on top of the background reader, so it appears later in the tree).
+         Includes stall-detection: if the highest visible ayah heading number
+         does not increase after 3 consecutive dumps, we've hit the bottom.
 
-    Returns (found, root_at_target) where root_at_target is the hierarchy tree
-    captured when the target was found (avoids a redundant second dump).
+    Returns (found, root_at_target) — root_at_target is the tree from the dump
+    that first showed the target, so the caller avoids a redundant second dump.
     """
     import time
 
-    # Match "Ayah N" as a heading: at start of text or after a blank line,
-    # followed by any non-word character, whitespace, or end-of-string.
     target_re = re.compile(
         rf'(?:^|\n\n?)Ayah\s+{target_ayah}(?:\W|$)', re.IGNORECASE | re.MULTILINE
     )
 
-    for _ in range(max_scrolls):
+    def _dump():
         try:
-            xml_str = d.dump_hierarchy()
-            root = ET.fromstring(xml_str)
+            return ET.fromstring(d.dump_hierarchy())
         except Exception:
-            return False, None
+            return None
 
-        for node in root.iter():
-            text = node.attrib.get("text", "")
-            if text and target_re.search(text):
+    def _visible(root):
+        return any(
+            target_re.search(n.attrib.get("text", ""))
+            for n in root.iter()
+        )
+
+    # ── check already visible ────────────────────────────────────────────────
+    root = _dump()
+    if root is None:
+        return False, None
+    if _visible(root):
+        return True, root
+
+    # ── Strategy 1: UIAutomator2 native scroll.to() ──────────────────────────
+    try:
+        if d(scrollable=True).scroll.to(text=f"Ayah {target_ayah}"):
+            time.sleep(0.2)
+            root = _dump()
+            if root and _visible(root):
                 return True, root
+    except Exception:
+        pass
 
-        # Target not yet visible — swipe up within the popup content area
-        bounds = _get_popup_scrollable_bounds(root)
+    # ── Strategy 2: manual swipe on the LAST (popup) scrollable ─────────────
+    # Stall on IDENTICAL VISIBLE TEXT rather than identical heading number:
+    # a long Ayah 221 section may take many swipes before Ayah 222 appears,
+    # but the heading count wouldn't advance.  Frozen text means we've hit the
+    # bottom (or the wrong container).
+    def _visible_text_sig(root):
+        parts = sorted(
+            n.attrib.get("text", "") for n in root.iter() if n.attrib.get("text", "")
+        )
+        return "||".join(parts)
+
+    prev_sig = _visible_text_sig(root) if root else ""
+    stall = 0
+
+    for _ in range(max_scrolls):
+        root = _dump()
+        if root is None:
+            return False, None
+        if _visible(root):
+            return True, root
+
+        cur_sig = _visible_text_sig(root)
+        if cur_sig and cur_sig == prev_sig:
+            stall += 1
+            if stall >= 3:
+                break   # no content change = hit bottom or wrong container
+        else:
+            stall = 0
+        prev_sig = cur_sig
+
+        bounds = _last_popup_scrollable_bounds(root)
         if bounds:
             x0, y0, x1, y1 = bounds
-            cx = (x0 + x1) // 2
-            height = y1 - y0
-            start_y = y0 + int(height * 0.70)
-            end_y   = y0 + int(height * 0.30)
-            d.swipe(cx, start_y, cx, end_y, duration=0.3)
+            cx  = (x0 + x1) // 2
+            h   = y1 - y0
+            d.swipe(cx, y0 + int(h * 0.75), cx, y0 + int(h * 0.25), duration=0.5)
         else:
-            # Fallback: generic upward swipe in screen centre
             info = d.info
             w = info.get("displayWidth", 1080)
             h = info.get("displayHeight", 2340)
-            d.swipe(w // 2, h * 2 // 3, w // 2, h // 3, duration=0.3)
+            d.swipe(w // 2, h * 2 // 3, w // 2, h // 3, duration=0.5)
 
         time.sleep(0.3)
 
@@ -259,12 +312,15 @@ def _find_ayah_text(root: ET.Element) -> str | None:
                 parts.append(t)
         return parts
 
-    # Try to find the content scrollable View first
+    # Try to find the content scrollable View — use the LAST match (popup layers last)
+    content_node = None
     for node in root.iter():
         if _is_content_scrollable(node):
-            parts = _collect_text(node)
-            if parts:
-                return "\n\n".join(parts)
+            content_node = node
+    if content_node is not None:
+        parts = _collect_text(content_node)
+        if parts:
+            return "\n\n".join(parts)
 
     # Fallback: look for any TextView whose text starts with "Ayah"
     for node in root.iter():
