@@ -2,9 +2,10 @@ from __future__ import annotations
 """
 Text extraction and parsing for the AyahByAyah popup.
 
-The popup renders the full commentary as a single TextView inside a ScrollView.
-dump_hierarchy() captures the complete text without needing to scroll,
-so extraction is a single hierarchy dump + parse.
+The popup content area is a RecyclerView — dump_hierarchy() only captures
+what is currently visible on screen.  For grouped-range popups the popup
+opens at the first ayah in the range; we scroll within the popup to bring
+the target ayah's section into view before capturing.
 """
 
 import re
@@ -80,13 +81,81 @@ def split_ayah_sections(text: str, start_ayah: int, end_ayah: int) -> dict[int, 
 
 # ─── Main extraction ─────────────────────────────────────────────────────────
 
+def _get_popup_scrollable_bounds(root: ET.Element) -> tuple[int, int, int, int] | None:
+    """Return (x0, y0, x1, y1) of the popup content scrollable area, or None."""
+    for node in root.iter():
+        if node.attrib.get("scrollable") != "true":
+            continue
+        b = node.attrib.get("bounds", "")
+        nums = list(map(int, re.findall(r"\d+", b)))
+        if len(nums) < 4:
+            continue
+        x0, y0, x1, y1 = nums[:4]
+        if y0 > 100 and (y1 - y0) > 400:
+            return (x0, y0, x1, y1)
+    return None
+
+
+def _scroll_popup_to_ayah(
+    d, target_ayah: int, max_scrolls: int = 30
+) -> tuple[bool, ET.Element | None]:
+    """
+    Scroll the popup's content area until the heading for target_ayah is visible.
+
+    Uses bounds-aware swipe gestures so only the popup content area is scrolled,
+    not the background Quran reading view.
+
+    Returns (found, root_at_target) where root_at_target is the hierarchy tree
+    captured when the target was found (avoids a redundant second dump).
+    """
+    import time
+
+    # Match "Ayah N" as a heading: at start of text or after a blank line,
+    # followed by any non-word character, whitespace, or end-of-string.
+    target_re = re.compile(
+        rf'(?:^|\n\n?)Ayah\s+{target_ayah}(?:\W|$)', re.IGNORECASE | re.MULTILINE
+    )
+
+    for _ in range(max_scrolls):
+        try:
+            xml_str = d.dump_hierarchy()
+            root = ET.fromstring(xml_str)
+        except Exception:
+            return False, None
+
+        for node in root.iter():
+            text = node.attrib.get("text", "")
+            if text and target_re.search(text):
+                return True, root
+
+        # Target not yet visible — swipe up within the popup content area
+        bounds = _get_popup_scrollable_bounds(root)
+        if bounds:
+            x0, y0, x1, y1 = bounds
+            cx = (x0 + x1) // 2
+            height = y1 - y0
+            start_y = y0 + int(height * 0.70)
+            end_y   = y0 + int(height * 0.30)
+            d.swipe(cx, start_y, cx, end_y, duration=0.3)
+        else:
+            # Fallback: generic upward swipe in screen centre
+            info = d.info
+            w = info.get("displayWidth", 1080)
+            h = info.get("displayHeight", 2340)
+            d.swipe(w // 2, h * 2 // 3, w // 2, h // 3, duration=0.3)
+
+        time.sleep(0.3)
+
+    return False, None
+
+
 def extract(d, expected_ayah: int) -> PopupContent | None:
     """
     Extract the commentary text from the open popup.
 
-    The AyahByAyah app renders the full text in a single TextView inside a ScrollView.
-    Content is loaded asynchronously — we wait for the ProgressBar to disappear
-    before reading the final text.
+    For single-ayah popups a single hierarchy dump is enough.
+    For grouped-range popups the popup opens at the first ayah in the range;
+    we scroll within the popup to bring expected_ayah into view first.
 
     Returns PopupContent or None if the popup is not detected.
     """
@@ -97,7 +166,6 @@ def extract(d, expected_ayah: int) -> PopupContent | None:
 
     # Wait for content to finish loading (ProgressBar disappears)
     root = None
-    text = None
     for _ in range(40):  # up to 20 seconds
         time.sleep(0.5)
         try:
@@ -111,22 +179,41 @@ def extract(d, expected_ayah: int) -> PopupContent | None:
             for n in root.iter()
         )
         if not has_spinner:
-            text = _find_ayah_text(root)
-            # Whether we found text or not, loading is done — stop polling
             break
-    else:
-        # Timed out — try reading whatever we have
-        if root is not None:
-            text = _find_ayah_text(root)
+    # root may be None if every dump raised; proceed and handle below
+
+    # Initial capture to detect range
+    text: str | None = None
+    if root is not None:
+        text = _find_ayah_text(root)
 
     if not text:
         return None
 
     start, end, range_str = _parse_range(text)
-    if start is None:
-        start = expected_ayah
-        end   = expected_ayah
-        range_str = None
+
+    # If this is a grouped range and the target ayah is not the first one,
+    # scroll within the popup to bring the target ayah section into view.
+    if (
+        start is not None
+        and end is not None
+        and expected_ayah != start
+        and start <= expected_ayah <= end
+    ):
+        # Preserve original range metadata — scrolling may change what _parse_range sees
+        orig_start, orig_end, orig_range_str = start, end, range_str
+        found, scrolled_root = _scroll_popup_to_ayah(d, expected_ayah)
+        if found and scrolled_root is not None:
+            scrolled_text = _find_ayah_text(scrolled_root)
+            if scrolled_text:
+                text = scrolled_text
+        # Restore original range metadata regardless of scroll outcome
+        start, end, range_str = orig_start, orig_end, orig_range_str
+    else:
+        if start is None:
+            start = expected_ayah
+            end   = expected_ayah
+            range_str = None
 
     return PopupContent(
         raw_text=text.strip(),
