@@ -109,30 +109,47 @@ def _scroll_popup_to_ayah(
     """
     Scroll the popup's content area until the heading for target_ayah is visible.
 
-    Why fixed coordinates:
-      Android routes touch events to the TOPMOST view at the touch point.
-      The popup covers the bottom ~60% of the screen and is always on top,
-      so swiping between y=87% and y=60% of screen height will always be
-      received by the popup regardless of what the background reader is doing.
+    Root-cause history:
+      Fix 1-3 used d.swipe() with fixed screen coordinates.  These failed because
+      the BottomSheetDialog intercepts upward swipe gestures as "expand sheet" or
+      "dismiss sheet" actions before they reach the inner RecyclerView content.
 
-    Stall detection:
-      Uses _find_ayah_text() (popup-specific) as the change signal, NOT all
-      nodes.  This prevents false progress when the background scrollable
-      changes while the popup stays frozen.
+    Fix 4 — accessibility-based scrolling:
+      Use UIAutomator2's scroll.forward() / scroll.to() which dispatch Android's
+      ACTION_SCROLL_FORWARD accessibility action directly on the target View.
+      This bypasses all touch-gesture interceptors (BottomSheet, CoordinatorLayout)
+      and reliably scrolls only the intended RecyclerView.
 
-    Strategy 1:
-      UIAutomator2 native scroll.to() is tried first as a quick-win.
+      The popup is the LAST scrollable in the hierarchy (it renders on top of the
+      background Quran reader), so we always target instance=(count-1).
 
-    Strategy 2:
-      Fixed-coordinate swipe + popup-text-based stall detection.
+    Visibility check:
+      d(text=...).exists is faster than a full dump_hierarchy() parse and
+      sufficient for yes/no "is the heading visible?" queries.
 
     Returns (found, root_at_target).
     """
     import time
 
-    target_re = re.compile(
-        rf'(?:^|\n\n?)Ayah\s+{target_ayah}(?:\W|$)', re.IGNORECASE | re.MULTILINE
-    )
+    def _ayah_exists():
+        """
+        Check if the section for target_ayah is currently on screen.
+
+        The popup stores each ayah's section as ONE large TextView whose text
+        starts with "Ayah N\\n\\n[Arabic]\\n\\n[Commentary]...".  We cannot use
+        text= (exact match) — we need textStartsWith or textContains.
+        Try both to handle potential whitespace/encoding variations.
+        """
+        try:
+            heading = f"Ayah {target_ayah}"
+            # textContains with trailing \n is delimiter-safe (won't confuse
+            # "Ayah 23" with "Ayah 230").  textStartsWith is a fallback only.
+            return (
+                d(textContains=f"{heading}\n").exists(timeout=0.3)
+                or d(textStartsWith=f"{heading}\n").exists(timeout=0.3)
+            )
+        except Exception:
+            return False
 
     def _dump():
         try:
@@ -141,70 +158,79 @@ def _scroll_popup_to_ayah(
             return None
 
     def _visible(root):
+        target_re = re.compile(
+            rf'(?:^|\n\n?)Ayah\s+{target_ayah}(?:\W|$)', re.IGNORECASE | re.MULTILINE
+        )
         return any(
             target_re.search(n.attrib.get("text", ""))
             for n in root.iter()
         )
 
-    def _popup_sig(root):
-        """Signature of popup-specific text only (ignores background nodes)."""
-        return _find_ayah_text(root) or ""
+    # ── check already visible (fast path) ───────────────────────────────────
+    if _ayah_exists():
+        root = _dump()
+        return (True, root) if root else (False, None)
 
-    # ── check already visible ────────────────────────────────────────────────
-    root = _dump()
-    if root is None:
-        return False, None
-    if _visible(root):
-        return True, root
+    # ── find the popup scrollable (LAST in hierarchy = topmost view) ─────────
+    def _last_scroll():
+        try:
+            count = d(scrollable=True).count
+            return d(scrollable=True, instance=max(count - 1, 0))
+        except Exception:
+            return d(scrollable=True)
 
-    # ── Strategy 1: UIAutomator2 native scroll.to() ──────────────────────────
+    # ── Strategy 1: UIAutomator2 scroll.to() on the popup scrollable ─────────
+    # scroll.to() calls ACTION_SCROLL_FORWARD repeatedly until the target text
+    # is visible — completely bypass touch-gesture interceptors.
+    # Use textStartsWith because each section is one big TextView starting with
+    # "Ayah N\n\n[Arabic]\n\n..." — exact text= match would never succeed.
     try:
-        if d(scrollable=True).scroll.to(text=f"Ayah {target_ayah}"):
-            time.sleep(0.2)
-            root = _dump()
-            if root and _visible(root):
-                return True, root
+        popup_scroll = _last_scroll()
+        heading = f"Ayah {target_ayah}"
+        # Use textContains with trailing \n so "Ayah 23" doesn't match "Ayah 230".
+        found_s1 = (
+            popup_scroll.scroll.to(textContains=f"{heading}\n")
+            or popup_scroll.scroll.to(textContains=heading)  # fallback
+        )
+        if found_s1:
+            time.sleep(0.5)
+            if _ayah_exists():
+                root = _dump()
+                return (True, root) if root else (False, None)
     except Exception:
         pass
 
-    # ── Strategy 2: fixed-coordinate swipe (popup always receives it) ────────
-    # Swipe from 87% → 60% of screen height: guaranteed inside popup content.
-    # Popup typically starts at ~30-40% of screen height; this range stays
-    # within the popup's scrollable content for any device size.
-    info = d.info
-    sw = info.get("displayWidth", 1080)
-    sh = info.get("displayHeight", 2340)
-    sx = sw // 2
-    sy_start = int(sh * 0.87)
-    sy_end   = int(sh * 0.60)
-
-    prev_sig = _popup_sig(root) if root else ""
+    # ── Strategy 2: manual scroll.forward() loop on popup scrollable ─────────
+    # For cases where scroll.to() can't find the text (e.g., heading uses a
+    # compound text node), scroll step-by-step and check after each step.
+    popup_scroll = _last_scroll()
+    last_root = _dump()
     stall = 0
-    last_root = root  # track deepest scroll position reached
 
     for _ in range(max_scrolls):
-        d.swipe(sx, sy_start, sx, sy_end, duration=0.5)
-        time.sleep(2.0)  # wait for scroll animation to settle before dumping
+        try:
+            can_scroll = popup_scroll.scroll.forward(steps=10)
+        except Exception:
+            can_scroll = False
 
-        root = _dump()
-        if root is None:
-            # Return best content reached so far even if target not confirmed
-            return False, last_root
-        if _visible(root):
-            return True, root
+        time.sleep(1.0)  # let RecyclerView render newly visible items
 
-        cur_sig = _popup_sig(root)
-        if cur_sig == prev_sig:
+        if _ayah_exists():
+            root = _dump()
+            return (True, root) if root else (False, last_root)
+
+        if not can_scroll:
             stall += 1
-            if stall >= 3:
-                break   # popup content frozen — single block or already at bottom
+            if stall >= 2:
+                break   # reached bottom of popup content
         else:
             stall = 0
-            last_root = root  # content changed: save as best-so-far
-        prev_sig = cur_sig
+            # Update last_root only when content has advanced (avoid holding
+            # a stale tree from before any scrolling occurred)
+            new_root = _dump()
+            if new_root is not None:
+                last_root = new_root
 
-    # Return best-effort root even if target heading not found:
-    # the caller's split_ayah_sections may still extract the right section.
     return False, last_root
 
 
