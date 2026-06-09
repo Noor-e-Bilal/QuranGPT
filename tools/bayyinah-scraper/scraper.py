@@ -312,15 +312,7 @@ class BayyinahScraper:
         pending = refetch_list
         if resume_after:
             rs, ra = resume_after
-            skip_until_done = False
-            trimmed = []
-            for s, a in refetch_list:
-                if (s, a) == (rs, ra):
-                    skip_until_done = True
-                    continue
-                if not skip_until_done or (s > rs) or (s == rs and a > ra):
-                    trimmed.append((s, a))
-            pending = trimmed
+            pending = [(s, a) for s, a in refetch_list if (s > rs) or (s == rs and a > ra)]
 
         total = len(pending)
         done = 0
