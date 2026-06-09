@@ -104,21 +104,29 @@ def _last_popup_scrollable_bounds(root: ET.Element) -> tuple[int, int, int, int]
 
 
 def _scroll_popup_to_ayah(
-    d, target_ayah: int, max_scrolls: int = 20
+    d, target_ayah: int, max_scrolls: int = 25
 ) -> tuple[bool, ET.Element | None]:
     """
     Scroll the popup's content area until the heading for target_ayah is visible.
 
-    Strategy (in order):
-      1. UIAutomator2's native scroll.to(text=) — targets the correct scrollable
-         automatically using the accessibility framework.
-      2. Manual swipe against the LAST scrollable in the hierarchy (popup layers
-         on top of the background reader, so it appears later in the tree).
-         Includes stall-detection: if the highest visible ayah heading number
-         does not increase after 3 consecutive dumps, we've hit the bottom.
+    Why fixed coordinates:
+      Android routes touch events to the TOPMOST view at the touch point.
+      The popup covers the bottom ~60% of the screen and is always on top,
+      so swiping between y=87% and y=60% of screen height will always be
+      received by the popup regardless of what the background reader is doing.
 
-    Returns (found, root_at_target) — root_at_target is the tree from the dump
-    that first showed the target, so the caller avoids a redundant second dump.
+    Stall detection:
+      Uses _find_ayah_text() (popup-specific) as the change signal, NOT all
+      nodes.  This prevents false progress when the background scrollable
+      changes while the popup stays frozen.
+
+    Strategy 1:
+      UIAutomator2 native scroll.to() is tried first as a quick-win.
+
+    Strategy 2:
+      Fixed-coordinate swipe + popup-text-based stall detection.
+
+    Returns (found, root_at_target).
     """
     import time
 
@@ -138,6 +146,10 @@ def _scroll_popup_to_ayah(
             for n in root.iter()
         )
 
+    def _popup_sig(root):
+        """Signature of popup-specific text only (ignores background nodes)."""
+        return _find_ayah_text(root) or ""
+
     # ── check already visible ────────────────────────────────────────────────
     root = _dump()
     if root is None:
@@ -155,51 +167,45 @@ def _scroll_popup_to_ayah(
     except Exception:
         pass
 
-    # ── Strategy 2: manual swipe on the LAST (popup) scrollable ─────────────
-    # Stall on IDENTICAL VISIBLE TEXT rather than identical heading number:
-    # a long Ayah 221 section may take many swipes before Ayah 222 appears,
-    # but the heading count wouldn't advance.  Frozen text means we've hit the
-    # bottom (or the wrong container).
-    def _visible_text_sig(root):
-        parts = sorted(
-            n.attrib.get("text", "") for n in root.iter() if n.attrib.get("text", "")
-        )
-        return "||".join(parts)
+    # ── Strategy 2: fixed-coordinate swipe (popup always receives it) ────────
+    # Swipe from 87% → 60% of screen height: guaranteed inside popup content.
+    # Popup typically starts at ~30-40% of screen height; this range stays
+    # within the popup's scrollable content for any device size.
+    info = d.info
+    sw = info.get("displayWidth", 1080)
+    sh = info.get("displayHeight", 2340)
+    sx = sw // 2
+    sy_start = int(sh * 0.87)
+    sy_end   = int(sh * 0.60)
 
-    prev_sig = _visible_text_sig(root) if root else ""
+    prev_sig = _popup_sig(root) if root else ""
     stall = 0
+    last_root = root  # track deepest scroll position reached
 
     for _ in range(max_scrolls):
+        d.swipe(sx, sy_start, sx, sy_end, duration=0.5)
+        time.sleep(0.35)
+
         root = _dump()
         if root is None:
-            return False, None
+            # Return best content reached so far even if target not confirmed
+            return False, last_root
         if _visible(root):
             return True, root
 
-        cur_sig = _visible_text_sig(root)
-        if cur_sig and cur_sig == prev_sig:
+        cur_sig = _popup_sig(root)
+        if cur_sig == prev_sig:
             stall += 1
             if stall >= 3:
-                break   # no content change = hit bottom or wrong container
+                break   # popup content frozen — single block or already at bottom
         else:
             stall = 0
+            last_root = root  # content changed: save as best-so-far
         prev_sig = cur_sig
 
-        bounds = _last_popup_scrollable_bounds(root)
-        if bounds:
-            x0, y0, x1, y1 = bounds
-            cx  = (x0 + x1) // 2
-            h   = y1 - y0
-            d.swipe(cx, y0 + int(h * 0.75), cx, y0 + int(h * 0.25), duration=0.5)
-        else:
-            info = d.info
-            w = info.get("displayWidth", 1080)
-            h = info.get("displayHeight", 2340)
-            d.swipe(w // 2, h * 2 // 3, w // 2, h // 3, duration=0.5)
-
-        time.sleep(0.3)
-
-    return False, None
+    # Return best-effort root even if target heading not found:
+    # the caller's split_ayah_sections may still extract the right section.
+    return False, last_root
 
 
 def extract(d, expected_ayah: int) -> PopupContent | None:
@@ -256,7 +262,12 @@ def extract(d, expected_ayah: int) -> PopupContent | None:
         # Preserve original range metadata — scrolling may change what _parse_range sees
         orig_start, orig_end, orig_range_str = start, end, range_str
         found, scrolled_root = _scroll_popup_to_ayah(d, expected_ayah)
-        if found and scrolled_root is not None:
+        if scrolled_root is not None:
+            # Use scrolled content whether or not exact target heading was confirmed.
+            # If the popup has individual sections, scroll will have moved to a new
+            # position and split_ayah_sections (in the caller) can extract the target.
+            # If the popup is a single block, scrolled_root == root (no change) and
+            # we fall back to the original text naturally.
             scrolled_text = _find_ayah_text(scrolled_root)
             if scrolled_text:
                 text = scrolled_text
