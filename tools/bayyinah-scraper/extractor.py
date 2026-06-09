@@ -184,7 +184,7 @@ def _scroll_popup_to_ayah(
 
     for _ in range(max_scrolls):
         d.swipe(sx, sy_start, sx, sy_end, duration=0.5)
-        time.sleep(0.35)
+        time.sleep(2.0)  # wait for scroll animation to settle before dumping
 
         root = _dump()
         if root is None:
