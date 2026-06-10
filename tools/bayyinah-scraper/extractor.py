@@ -81,26 +81,71 @@ def split_ayah_sections(text: str, start_ayah: int, end_ayah: int) -> dict[int, 
 
 # ─── Main extraction ─────────────────────────────────────────────────────────
 
-def _last_popup_scrollable_bounds(root: ET.Element) -> tuple[int, int, int, int] | None:
+def _find_popup_scroll(d):
     """
-    Return (x0, y0, x1, y1) of the popup content scrollable area.
+    Return a UIAutomator2 selector for the popup's inner ScrollView.
 
-    Android renders the popup ABOVE the background Quran reader, so the popup's
-    RecyclerView appears LATER in the accessibility tree.  We walk the entire
-    tree and keep the LAST match so we target the popup, not the background.
+    Targets android.widget.ScrollView by class to avoid the outer
+    android.view.View BottomSheet wrapper (which slides down on scroll.forward).
+    If multiple ScrollViews match, takes instance=count-1 (popup renders last).
     """
-    result = None
+    for cls in ("android.widget.ScrollView",
+                "androidx.core.widget.NestedScrollView"):
+        try:
+            count = d(className=cls, scrollable=True).count
+            if count > 0:
+                return d(className=cls, scrollable=True, instance=count - 1)
+        except Exception:
+            continue
+    return d(className="android.widget.ScrollView")
+
+
+def _get_popup_swipe_coords(d) -> tuple[int, int, int, int]:
+    """
+    Return (fx, fy, tx, ty) for an upward swipe within the popup ScrollView.
+
+    Swipe from 70% → 25% of ScrollView height (fast, duration=0.3 s).
+    Starting in the lower portion avoids the BottomSheet drag handle at the top.
+    Hardcoded fallback from debug_1_2.xml bounds [0,677][1080,2339].
+    """
+    try:
+        sw = _find_popup_scroll(d)
+        if sw.exists(timeout=0.5):
+            info = sw.info
+            b = info.get('bounds', {})
+            top = b.get('top', 677)
+            bottom = b.get('bottom', 2339)
+            right = b.get('right', 1080)
+            cx = right // 2
+            return (cx, top + int((bottom - top) * 0.70),
+                    cx, top + int((bottom - top) * 0.25))
+    except Exception:
+        pass
+    return (540, 1840, 540, 1093)
+
+
+def _root_fingerprint_fn(root: ET.Element | None) -> tuple[str, int]:
+    """
+    Returns (text, top_y) for scroll stall detection.
+
+    Text alone is insufficient when scrolling through a large single ViewHolder
+    (text is constant but y-position changes on each swipe).
+    """
+    if root is None:
+        return ("", -1)
+    text = " ".join(n.attrib.get("text", "") for n in root.iter())
+    top_y = -1
     for node in root.iter():
-        if node.attrib.get("scrollable") != "true":
+        t = node.attrib.get("text", "").strip()
+        if len(t) < 30:
             continue
         b = node.attrib.get("bounds", "")
         nums = list(map(int, re.findall(r"\d+", b)))
-        if len(nums) < 4:
-            continue
-        x0, y0, x1, y1 = nums[:4]
-        if y0 > 100 and (y1 - y0) > 400:
-            result = (x0, y0, x1, y1)  # keep updating — want the LAST one
-    return result
+        if len(nums) >= 4:
+            top_y = nums[1]
+            break
+    return (text, top_y)
+
 
 
 def _scroll_popup_to_ayah(
@@ -172,33 +217,10 @@ def _scroll_popup_to_ayah(
         return (True, root) if root else (False, None)
 
     # ── find the popup's inner ScrollView ────────────────────────────────────
-    # IMPORTANT: target android.widget.ScrollView by class name.
-    # The popup has TWO scrollable nodes:
-    #   - outer android.view.View  (the BottomSheet drag handle wrapper)
-    #   - inner android.widget.ScrollView  (the actual content scroll area)
-    # The background Quran reader uses RecyclerView/View (not ScrollView), so
-    # filtering by className="android.widget.ScrollView" isolates the popup.
-    # scroll.forward() on the BottomSheet View causes the sheet to SLIDE DOWN
-    # (collapse/dismiss) instead of scrolling the content.
-    #
-    # If multiple ScrollViews exist, take instance=count-1 (popup is on top,
-    # so its ScrollView appears last in the accessibility tree).
-    # Do NOT fall back to scrollable=True instance=count-1 — that re-hits the
-    # BottomSheet View and dismisses the sheet.
+    # IMPORTANT: target android.widget.ScrollView by class name — see
+    # _find_popup_scroll() for the full rationale.
     def _popup_scroll():
-        for cls in ("android.widget.ScrollView",
-                    "androidx.core.widget.NestedScrollView"):
-            try:
-                count = d(className=cls, scrollable=True).count
-                if count > 0:
-                    return d(className=cls, scrollable=True,
-                             instance=count - 1)
-            except Exception:
-                continue
-        # Last resort: return a ScrollView selector without instance constraint.
-        # Better to target a non-existent ScrollView (raises benign exception)
-        # than to target the BottomSheet View (collapses the sheet).
-        return d(className="android.widget.ScrollView")
+        return _find_popup_scroll(d)
 
     # ── Strategy 1: UIAutomator2 scroll.to() on the popup ScrollView ─────────
     # scroll.to() calls UiScrollable.scrollIntoView(UiSelector) → dispatches
@@ -228,60 +250,11 @@ def _scroll_popup_to_ayah(
     # Swipe UP (finger moves up = content reveals what's below) from within the
     # LOWER portion of the ScrollView so the BottomSheet drag handle at the top
     # doesn't intercept the gesture.
-    # • Start at 70% down within the ScrollView bounds
-    # • End at 25% down within the ScrollView bounds
-    # • Duration 0.3 s = fast fling → inner view gets priority over BottomSheet
-
-    def _get_swipe_coords():
-        """Return (fx, fy, tx, ty) for an upward swipe inside the popup.
-
-        Uses _popup_scroll() to find the correct ScrollView (same logic that
-        avoids the BottomSheet wrapper and handles multiple ScrollView instances).
-        """
-        try:
-            sw = _popup_scroll()
-            if sw.exists(timeout=0.5):
-                info = sw.info
-                b = info.get('bounds', {})
-                top = b.get('top', 677)
-                bottom = b.get('bottom', 2339)
-                right = b.get('right', 1080)
-                cx = right // 2
-                return (cx, top + int((bottom - top) * 0.70),
-                        cx, top + int((bottom - top) * 0.25))
-        except Exception:
-            pass
-        # Hardcoded fallback from debug_1_2.xml: ScrollView [0,677][1080,2339]
-        return (540, 1840, 540, 1093)
-
-    def _root_fingerprint(root):
-        """
-        Returns (text, top_y) to detect scroll progress.
-
-        Text alone is not enough: while scrolling through a large single
-        RecyclerView ViewHolder (e.g., Ayah 221 = 7849 chars ≈ 10+ screen
-        heights), the node's text is constant but its y-position moves up
-        on every swipe.  Including top_y prevents false stall detection.
-        """
-        if root is None:
-            return ("", -1)
-        text = " ".join(n.attrib.get("text", "") for n in root.iter())
-        top_y = -1
-        for node in root.iter():
-            t = node.attrib.get("text", "").strip()
-            if len(t) < 30:
-                continue
-            b = node.attrib.get("bounds", "")
-            nums = list(map(int, re.findall(r"\d+", b)))
-            if len(nums) >= 4:
-                top_y = nums[1]  # y0 of the first large content node
-                break
-        return (text, top_y)
 
     last_root = _dump()
-    last_fp = _root_fingerprint(last_root)
+    last_fp = _root_fingerprint_fn(last_root)
     stall = 0
-    fx, fy, tx, ty = _get_swipe_coords()
+    fx, fy, tx, ty = _get_popup_swipe_coords(d)
 
     for _ in range(max_scrolls):
         try:
@@ -296,7 +269,7 @@ def _scroll_popup_to_ayah(
             return (True, root) if root else (False, last_root)
 
         new_root = _dump()
-        new_fp = _root_fingerprint(new_root)
+        new_fp = _root_fingerprint_fn(new_root)
 
         if new_fp == last_fp:
             stall += 1
@@ -311,6 +284,130 @@ def _scroll_popup_to_ayah(
                 last_fp = new_fp
 
     return False, last_root
+
+
+def extract_full_range(d, start_ayah: int, end_ayah: int) -> dict[int, str]:
+    """
+    Extract ALL section texts from a range popup in a single popup open.
+
+    The popup opens at start_ayah.  This function scrolls from top to bottom,
+    harvesting every "Ayah N" ViewHolder node that becomes visible.  Sections
+    are returned as {ayah_num: section_text} for the full range.
+
+    This replaces the per-ayah scroll approach which suffered from:
+      - max_scrolls=25 too small for large ranges (e.g., 31-69 = 39 ayahs)
+      - per-ayah re-open causing cycling duplicates when scroll didn't reach target
+      - long processing time (N popup opens per N-ayah range)
+
+    Returns {ayah_num: section_text}.  Ayahs not found get the initial raw text
+    as fallback so callers always have something to store.
+    """
+    import time
+
+    sections: dict[int, str] = {}
+
+    def _dump():
+        try:
+            return ET.fromstring(d.dump_hierarchy())
+        except Exception:
+            return None
+
+    def _harvest(root: ET.Element | None) -> None:
+        """Scan all text nodes for 'Ayah N\n' headings → add to sections."""
+        if root is None:
+            return
+        for node in root.iter():
+            text = node.attrib.get("text", "").strip()
+            # Match individual section heading: "Ayah N\n..." (not "Ayahs N-M")
+            m = re.match(r"Ayah\s+(\d+)\s*\n", text, re.IGNORECASE)
+            if not m:
+                continue
+            ayah_num = int(m.group(1))
+            if start_ayah <= ayah_num <= end_ayah and ayah_num not in sections:
+                sections[ayah_num] = text
+
+    # Wait for popup to load
+    if not d(text=cfg.POPUP_CONCISE_TAB_TEXT).exists(timeout=cfg.POPUP_APPEAR_TIMEOUT):
+        return {}
+
+    for _ in range(40):
+        time.sleep(0.5)
+        root = _dump()
+        if root is not None:
+            has_spinner = any(
+                n.attrib.get("class", "").endswith("ProgressBar") for n in root.iter()
+            )
+            if not has_spinner:
+                break
+
+    # Scroll back to top before harvesting.
+    # extract() may have already scrolled the popup to expected_ayah (if it's not
+    # the range start), so any sections above the current position would be missed
+    # without this reset step.
+    fx, fy, tx, ty = _get_popup_swipe_coords(d)
+    scroll_down_fx, scroll_down_fy, scroll_down_tx, scroll_down_ty = fx, ty, tx, fy  # reversed
+    top_stall = 0
+    last_top_fp = _root_fingerprint_fn(_dump())
+    for _ in range(35):  # max_scrolls for extract() is 25, so 35 is sufficient
+        try:
+            d.swipe(scroll_down_fx, scroll_down_fy, scroll_down_tx, scroll_down_ty, duration=0.3)
+        except Exception:
+            pass
+        time.sleep(1.0)
+        cur_root = _dump()
+        cur_fp = _root_fingerprint_fn(cur_root)
+        if cur_fp == last_top_fp:
+            top_stall += 1
+            if top_stall >= 3:
+                break
+        else:
+            top_stall = 0
+            last_top_fp = cur_fp
+
+    # Initial harvest (popup now at top = start_ayah)
+    root = _dump()
+    _harvest(root)
+
+    # Fallback raw text — used if a section isn't found during scroll
+    initial_text = _find_ayah_text(root) if root is not None else None
+
+    # Scroll all the way to the bottom, harvesting new sections as they appear
+    fx, fy, tx, ty = _get_popup_swipe_coords(d)
+    last_fp = _root_fingerprint_fn(root)
+    stall = 0
+
+    for _ in range(150):  # generous limit: 150 swipes × ~600 px = ~90,000 px
+        # Stop early if we have every section
+        if all(a in sections for a in range(start_ayah, end_ayah + 1)):
+            break
+
+        try:
+            d.swipe(fx, fy, tx, ty, duration=0.3)
+        except Exception:
+            pass
+
+        time.sleep(1.5)
+
+        new_root = _dump()
+        _harvest(new_root)
+
+        new_fp = _root_fingerprint_fn(new_root)
+        if new_fp == last_fp:
+            stall += 1
+            if stall >= 3:
+                break  # reached bottom or swipe isn't landing
+        else:
+            stall = 0
+            if new_root is not None:
+                last_fp = new_fp
+
+    # For any ayah not found, use initial text as fallback
+    if initial_text:
+        for a in range(start_ayah, end_ayah + 1):
+            if a not in sections:
+                sections[a] = initial_text
+
+    return sections
 
 
 def extract(d, expected_ayah: int) -> PopupContent | None:

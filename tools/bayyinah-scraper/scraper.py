@@ -320,6 +320,11 @@ class BayyinahScraper:
 
         self.navigate_to_surahs_tab()
 
+        # Track ranges already fully extracted in this run so we don't re-open
+        # the popup for every individual ayah in a range.
+        # Key: "{surah}:{range_str}"  e.g. "2:221-242"
+        processed_ranges: dict[str, dict[int, str]] = {}
+
         # Group by surah so we open each surah only once
         for surah, group in groupby(pending, key=lambda x: x[0]):
             ayahs = [a for _, a in group]
@@ -330,9 +335,35 @@ class BayyinahScraper:
             time.sleep(1.0)
 
             for ayah in ayahs:
-                # Delete stale record so upsert stores fresh data
-                db.delete_description(self.conn, surah, ayah)
+                # ── Check if this ayah belongs to an already-processed range ──
+                row = self.conn.execute(
+                    "SELECT description_range FROM ayah_descriptions WHERE surah=? AND ayah=?",
+                    (surah, ayah),
+                ).fetchone()
+                existing_range = row[0] if row else None
+                range_key = f"{surah}:{existing_range}" if existing_range else None
 
+                if range_key and range_key in processed_ranges:
+                    # Range was fully extracted earlier — save the section we
+                    # already have and move on without opening a popup.
+                    sections_cache = processed_ranges[range_key]
+                    if ayah in sections_cache:
+                        ayah_text = sections_cache[ayah]
+                        db.upsert_description(self.conn, surah, ayah, ayah_text, existing_range)
+                        done += 1
+                        print(
+                            f"  [{surah}:{ayah}] ↩ range {existing_range} "
+                            f"(cached {len(ayah_text)} chars)  done={done}/{total}"
+                        )
+                        prog.save_refetch(surah, ayah)
+                    else:
+                        # Section not found during full-range scroll — skip
+                        print(f"  [{surah}:{ayah}] ⚠ not found in range cache — skipping")
+                        prog.save_refetch(surah, ayah)
+                        done += 1
+                    continue
+
+                # ── Navigate to this ayah and open its popup ──────────────────
                 target_coords = self._navigate_to_ayah_marker(ayah, surah)
                 if target_coords is None:
                     print(f"  [{surah}:{ayah}] ⚠ marker not found after max swipes — skipping")
@@ -353,27 +384,55 @@ class BayyinahScraper:
                         done += 1
                         continue
 
+                # ── Detect range vs single from the initial popup dump ────────
                 content = extractor.extract(self.d, ayah)
-                self.close_popup()
 
                 if content is None:
+                    self.close_popup()
                     print("⚠ extraction failed — skipping")
                     prog.save_refetch(surah, ayah)
                     done += 1
                     continue
 
-                sections = extractor.split_ayah_sections(
-                    content.raw_text, content.start_ayah, content.end_ayah
-                )
-                ayah_text = sections.get(ayah, content.raw_text)
+                if content.range_str is not None:
+                    # ── Range popup: scroll all the way to the bottom once ────
+                    # Extract every ayah section in the range in a single pass.
+                    # This avoids the per-ayah re-open + incomplete scroll cycle.
+                    print(f"[range {content.range_str}] full-scroll extracting all sections…",
+                          end=" ", flush=True)
+                    all_sections = extractor.extract_full_range(
+                        self.d, content.start_ayah, content.end_ayah
+                    )
+                    self.close_popup()
 
-                db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
+                    rk = f"{surah}:{content.range_str}"
+                    processed_ranges[rk] = all_sections
 
-                done += 1
-                print(
-                    f"✓ [{surah}:{ayah}] range={content.range_str or 'single'} "
-                    f"({len(ayah_text)} chars)  done={done}/{total}"
-                )
+                    # Save current ayah immediately; the rest will be written
+                    # when their refetch_list entries are processed (cache hit).
+                    ayah_text = all_sections.get(ayah, content.raw_text)
+                    db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
+
+                    done += 1
+                    print(
+                        f"✓ [{surah}:{ayah}] range={content.range_str} "
+                        f"({len(ayah_text)} chars)  done={done}/{total} "
+                        f"[{len(all_sections)} sections cached]"
+                    )
+                else:
+                    # ── Single ayah: original path ────────────────────────────
+                    self.close_popup()
+                    sections = extractor.split_ayah_sections(
+                        content.raw_text, content.start_ayah, content.end_ayah
+                    )
+                    ayah_text = sections.get(ayah, content.raw_text)
+                    db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
+
+                    done += 1
+                    print(
+                        f"✓ [{surah}:{ayah}] single "
+                        f"({len(ayah_text)} chars)  done={done}/{total}"
+                    )
 
                 prog.save_refetch(surah, ayah)
                 time.sleep(cfg.AYAH_PAUSE)
