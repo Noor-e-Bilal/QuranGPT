@@ -220,34 +220,95 @@ def _scroll_popup_to_ayah(
     except Exception:
         pass
 
-    # ── Strategy 2: manual scroll.forward() loop on popup ScrollView ─────────
-    # Fallback for cases where scroll.to() can't locate the off-screen text
-    # (e.g., lazy-loaded RecyclerView items not yet in the accessibility tree).
-    popup_scroll = _popup_scroll()
+    # ── Strategy 2: touch swipe within popup content area ────────────────────
+    # scroll.forward() (accessibility action) returns False immediately on this
+    # popup — the app's canScrollForward() is misconfigured even though the view
+    # IS scrollable via touch.  Fall back to a raw d.swipe() gesture.
+    #
+    # Swipe UP (finger moves up = content reveals what's below) from within the
+    # LOWER portion of the ScrollView so the BottomSheet drag handle at the top
+    # doesn't intercept the gesture.
+    # • Start at 70% down within the ScrollView bounds
+    # • End at 25% down within the ScrollView bounds
+    # • Duration 0.3 s = fast fling → inner view gets priority over BottomSheet
+
+    def _get_swipe_coords():
+        """Return (fx, fy, tx, ty) for an upward swipe inside the popup.
+
+        Uses _popup_scroll() to find the correct ScrollView (same logic that
+        avoids the BottomSheet wrapper and handles multiple ScrollView instances).
+        """
+        try:
+            sw = _popup_scroll()
+            if sw.exists(timeout=0.5):
+                info = sw.info
+                b = info.get('bounds', {})
+                top = b.get('top', 677)
+                bottom = b.get('bottom', 2339)
+                right = b.get('right', 1080)
+                cx = right // 2
+                return (cx, top + int((bottom - top) * 0.70),
+                        cx, top + int((bottom - top) * 0.25))
+        except Exception:
+            pass
+        # Hardcoded fallback from debug_1_2.xml: ScrollView [0,677][1080,2339]
+        return (540, 1840, 540, 1093)
+
+    def _root_fingerprint(root):
+        """
+        Returns (text, top_y) to detect scroll progress.
+
+        Text alone is not enough: while scrolling through a large single
+        RecyclerView ViewHolder (e.g., Ayah 221 = 7849 chars ≈ 10+ screen
+        heights), the node's text is constant but its y-position moves up
+        on every swipe.  Including top_y prevents false stall detection.
+        """
+        if root is None:
+            return ("", -1)
+        text = " ".join(n.attrib.get("text", "") for n in root.iter())
+        top_y = -1
+        for node in root.iter():
+            t = node.attrib.get("text", "").strip()
+            if len(t) < 30:
+                continue
+            b = node.attrib.get("bounds", "")
+            nums = list(map(int, re.findall(r"\d+", b)))
+            if len(nums) >= 4:
+                top_y = nums[1]  # y0 of the first large content node
+                break
+        return (text, top_y)
+
     last_root = _dump()
+    last_fp = _root_fingerprint(last_root)
     stall = 0
+    fx, fy, tx, ty = _get_swipe_coords()
 
     for _ in range(max_scrolls):
         try:
-            can_scroll = popup_scroll.scroll.forward(steps=10)
+            d.swipe(fx, fy, tx, ty, duration=0.3)
         except Exception:
-            can_scroll = False
+            pass
 
-        time.sleep(1.0)  # let content render after scroll
+        time.sleep(1.5)  # let content render after swipe
 
         if _ayah_exists():
             root = _dump()
             return (True, root) if root else (False, last_root)
 
-        if not can_scroll:
+        new_root = _dump()
+        new_fp = _root_fingerprint(new_root)
+
+        if new_fp == last_fp:
             stall += 1
-            if stall >= 2:
-                break   # reached bottom of popup content
+            if stall >= 3:
+                break  # truly stuck — swipe not landing or at bottom
         else:
             stall = 0
-            new_root = _dump()
+            # Only update last_root/fp from a valid dump to avoid losing the
+            # last known good position on transient dump failures.
             if new_root is not None:
                 last_root = new_root
+                last_fp = new_fp
 
     return False, last_root
 
