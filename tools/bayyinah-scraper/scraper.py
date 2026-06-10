@@ -356,12 +356,11 @@ class BayyinahScraper:
                             f"(cached {len(ayah_text)} chars)  done={done}/{total}"
                         )
                         prog.save_refetch(surah, ayah)
+                        continue
                     else:
-                        # Section not found during full-range scroll — skip
-                        print(f"  [{surah}:{ayah}] ⚠ not found in range cache — skipping")
-                        prog.save_refetch(surah, ayah)
-                        done += 1
-                    continue
+                        # Extraction was incomplete — evict and re-extract fresh
+                        del processed_ranges[range_key]
+                        print(f"  [{surah}:{ayah}] cache miss — evicting and re-extracting")
 
                 # ── Navigate to this ayah and open its popup ──────────────────
                 target_coords = self._navigate_to_ayah_marker(ayah, surah)
@@ -384,8 +383,10 @@ class BayyinahScraper:
                         done += 1
                         continue
 
-                # ── Detect range vs single from the initial popup dump ────────
-                content = extractor.extract(self.d, ayah)
+                # skip_scroll=True: popup stays at range start so extract_full_range()
+                # can harvest from top → bottom without needing a scroll-to-top reset
+                # (downward swipes to reset position dismiss the BottomSheet).
+                content = extractor.extract(self.d, ayah, skip_scroll=True)
 
                 if content is None:
                     self.close_popup()
@@ -408,9 +409,15 @@ class BayyinahScraper:
                     rk = f"{surah}:{content.range_str}"
                     processed_ranges[rk] = all_sections
 
-                    # Save current ayah immediately; the rest will be written
-                    # when their refetch_list entries are processed (cache hit).
-                    ayah_text = all_sections.get(ayah, content.raw_text)
+                    # Save current ayah — it should be in all_sections (popup started
+                    # at range start and scrolled to bottom).  The fallback uses
+                    # content.raw_text (range-start text, not this ayah) only as a
+                    # last resort; log a warning so incomplete extractions are visible.
+                    if ayah in all_sections:
+                        ayah_text = all_sections[ayah]
+                    else:
+                        ayah_text = content.raw_text
+                        print(f"  ⚠ [{surah}:{ayah}] not harvested — using range-start fallback")
                     db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
 
                     done += 1

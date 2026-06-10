@@ -340,36 +340,13 @@ def extract_full_range(d, start_ayah: int, end_ayah: int) -> dict[int, str]:
             if not has_spinner:
                 break
 
-    # Scroll back to top before harvesting.
-    # extract() may have already scrolled the popup to expected_ayah (if it's not
-    # the range start), so any sections above the current position would be missed
-    # without this reset step.
-    fx, fy, tx, ty = _get_popup_swipe_coords(d)
-    scroll_down_fx, scroll_down_fy, scroll_down_tx, scroll_down_ty = fx, ty, tx, fy  # reversed
-    top_stall = 0
-    last_top_fp = _root_fingerprint_fn(_dump())
-    for _ in range(35):  # max_scrolls for extract() is 25, so 35 is sufficient
-        try:
-            d.swipe(scroll_down_fx, scroll_down_fy, scroll_down_tx, scroll_down_ty, duration=0.3)
-        except Exception:
-            pass
-        time.sleep(1.0)
-        cur_root = _dump()
-        cur_fp = _root_fingerprint_fn(cur_root)
-        if cur_fp == last_top_fp:
-            top_stall += 1
-            if top_stall >= 3:
-                break
-        else:
-            top_stall = 0
-            last_top_fp = cur_fp
+    # NOTE: The caller (scraper.py) must call extract(d, ayah, skip_scroll=True) so
+    # the popup is still at the range start when we begin harvesting here.
+    # A downward-swipe "scroll to top" would dismiss the BottomSheet — don't attempt it.
 
-    # Initial harvest (popup now at top = start_ayah)
+    # Initial harvest (popup at range start = start_ayah)
     root = _dump()
     _harvest(root)
-
-    # Fallback raw text — used if a section isn't found during scroll
-    initial_text = _find_ayah_text(root) if root is not None else None
 
     # Scroll all the way to the bottom, harvesting new sections as they appear
     fx, fy, tx, ty = _get_popup_swipe_coords(d)
@@ -401,22 +378,24 @@ def extract_full_range(d, start_ayah: int, end_ayah: int) -> dict[int, str]:
             if new_root is not None:
                 last_fp = new_fp
 
-    # For any ayah not found, use initial text as fallback
-    if initial_text:
-        for a in range(start_ayah, end_ayah + 1):
-            if a not in sections:
-                sections[a] = initial_text
-
+    # Return only what was actually harvested.
+    # Missing sections are NOT filled with initial_text — the caller's cache-eviction
+    # logic will re-extract them on the next encounter rather than silently storing
+    # wrong text (the range-start section) for every unharvested ayah.
     return sections
 
 
-def extract(d, expected_ayah: int) -> PopupContent | None:
+def extract(d, expected_ayah: int, skip_scroll: bool = False) -> PopupContent | None:
     """
     Extract the commentary text from the open popup.
 
     For single-ayah popups a single hierarchy dump is enough.
     For grouped-range popups the popup opens at the first ayah in the range;
-    we scroll within the popup to bring expected_ayah into view first.
+    by default we scroll within the popup to bring expected_ayah into view.
+
+    Pass skip_scroll=True when the caller will follow up with extract_full_range() —
+    this keeps the popup positioned at the range start so full-range harvesting
+    begins at the top.  (Downward swipes to scroll back to top dismiss the sheet.)
 
     Returns PopupContent or None if the popup is not detected.
     """
@@ -454,9 +433,11 @@ def extract(d, expected_ayah: int) -> PopupContent | None:
     start, end, range_str = _parse_range(text)
 
     # If this is a grouped range and the target ayah is not the first one,
-    # scroll within the popup to bring the target ayah section into view.
+    # scroll within the popup to bring the target ayah section into view —
+    # unless skip_scroll=True (caller will use extract_full_range instead).
     if (
-        start is not None
+        not skip_scroll
+        and start is not None
         and end is not None
         and expected_ayah != start
         and start <= expected_ayah <= end
