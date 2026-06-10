@@ -171,26 +171,46 @@ def _scroll_popup_to_ayah(
         root = _dump()
         return (True, root) if root else (False, None)
 
-    # ── find the popup scrollable (LAST in hierarchy = topmost view) ─────────
-    def _last_scroll():
-        try:
-            count = d(scrollable=True).count
-            return d(scrollable=True, instance=max(count - 1, 0))
-        except Exception:
-            return d(scrollable=True)
+    # ── find the popup's inner ScrollView ────────────────────────────────────
+    # IMPORTANT: target android.widget.ScrollView by class name.
+    # The popup has TWO scrollable nodes:
+    #   - outer android.view.View  (the BottomSheet drag handle wrapper)
+    #   - inner android.widget.ScrollView  (the actual content scroll area)
+    # The background Quran reader uses RecyclerView/View (not ScrollView), so
+    # filtering by className="android.widget.ScrollView" isolates the popup.
+    # scroll.forward() on the BottomSheet View causes the sheet to SLIDE DOWN
+    # (collapse/dismiss) instead of scrolling the content.
+    #
+    # If multiple ScrollViews exist, take instance=count-1 (popup is on top,
+    # so its ScrollView appears last in the accessibility tree).
+    # Do NOT fall back to scrollable=True instance=count-1 — that re-hits the
+    # BottomSheet View and dismisses the sheet.
+    def _popup_scroll():
+        for cls in ("android.widget.ScrollView",
+                    "androidx.core.widget.NestedScrollView"):
+            try:
+                count = d(className=cls, scrollable=True).count
+                if count > 0:
+                    return d(className=cls, scrollable=True,
+                             instance=count - 1)
+            except Exception:
+                continue
+        # Last resort: return a ScrollView selector without instance constraint.
+        # Better to target a non-existent ScrollView (raises benign exception)
+        # than to target the BottomSheet View (collapses the sheet).
+        return d(className="android.widget.ScrollView")
 
-    # ── Strategy 1: UIAutomator2 scroll.to() on the popup scrollable ─────────
-    # scroll.to() calls ACTION_SCROLL_FORWARD repeatedly until the target text
-    # is visible — completely bypass touch-gesture interceptors.
-    # Use textStartsWith because each section is one big TextView starting with
-    # "Ayah N\n\n[Arabic]\n\n..." — exact text= match would never succeed.
+    # ── Strategy 1: UIAutomator2 scroll.to() on the popup ScrollView ─────────
+    # scroll.to() calls UiScrollable.scrollIntoView(UiSelector) → dispatches
+    # ACTION_SCROLL_FORWARD accessibility actions on the inner ScrollView only.
+    # Use textContains with trailing \n as delimiter so "Ayah 23" won't match
+    # "Ayah 230".
     try:
-        popup_scroll = _last_scroll()
+        popup_scroll = _popup_scroll()
         heading = f"Ayah {target_ayah}"
-        # Use textContains with trailing \n so "Ayah 23" doesn't match "Ayah 230".
         found_s1 = (
             popup_scroll.scroll.to(textContains=f"{heading}\n")
-            or popup_scroll.scroll.to(textContains=heading)  # fallback
+            or popup_scroll.scroll.to(textContains=heading)  # fallback: no \n
         )
         if found_s1:
             time.sleep(0.5)
@@ -200,10 +220,10 @@ def _scroll_popup_to_ayah(
     except Exception:
         pass
 
-    # ── Strategy 2: manual scroll.forward() loop on popup scrollable ─────────
-    # For cases where scroll.to() can't find the text (e.g., heading uses a
-    # compound text node), scroll step-by-step and check after each step.
-    popup_scroll = _last_scroll()
+    # ── Strategy 2: manual scroll.forward() loop on popup ScrollView ─────────
+    # Fallback for cases where scroll.to() can't locate the off-screen text
+    # (e.g., lazy-loaded RecyclerView items not yet in the accessibility tree).
+    popup_scroll = _popup_scroll()
     last_root = _dump()
     stall = 0
 
@@ -213,7 +233,7 @@ def _scroll_popup_to_ayah(
         except Exception:
             can_scroll = False
 
-        time.sleep(1.0)  # let RecyclerView render newly visible items
+        time.sleep(1.0)  # let content render after scroll
 
         if _ayah_exists():
             root = _dump()
@@ -225,8 +245,6 @@ def _scroll_popup_to_ayah(
                 break   # reached bottom of popup content
         else:
             stall = 0
-            # Update last_root only when content has advanced (avoid holding
-            # a stale tree from before any scrolling occurred)
             new_root = _dump()
             if new_root is not None:
                 last_root = new_root
