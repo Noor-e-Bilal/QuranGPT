@@ -313,18 +313,42 @@ def extract_full_range(d, start_ayah: int, end_ayah: int) -> dict[int, str]:
             return None
 
     def _harvest(root: ET.Element | None) -> None:
-        """Scan all text nodes for 'Ayah N\n' headings → add to sections."""
+        """
+        Collect section texts from the currently visible hierarchy.
+
+        Uses _find_ayah_text() to get all visible text concatenated with \\n\\n,
+        then splits at "Ayah N" heading boundaries.
+
+        Why not match individual nodes:
+          The popup uses SEPARATE TextViews — one node for the "Ayah N" heading
+          (text = "Ayah 221", no trailing newline), one for Arabic, one for commentary.
+          re.match(r"Ayah N\\n") on "Ayah 221" always fails.
+          _find_ayah_text() concatenates those nodes; split_ayah_sections() handles
+          that concatenated format correctly.
+
+        Intentionally omits the fallback in split_ayah_sections() that assigns the
+        full text to every ayah when splitting fails — that would re-introduce duplicates.
+        """
         if root is None:
             return
-        for node in root.iter():
-            text = node.attrib.get("text", "").strip()
-            # Match individual section heading: "Ayah N\n..." (not "Ayahs N-M")
-            m = re.match(r"Ayah\s+(\d+)\s*\n", text, re.IGNORECASE)
+        visible_text = _find_ayah_text(root)
+        if not visible_text:
+            return
+        # Split at \\n\\nAyah N\\n (or \\n\\nAyah N$) — same logic as split_ayah_sections
+        # but WITHOUT the fallback that assigns full text to every ayah on failure.
+        parts = re.split(r"\n\n(?=Ayah\s+\d+(?:\n|$))", visible_text, flags=re.IGNORECASE)
+        for part in parts:
+            m = re.match(r"Ayah\s+(\d+)", part.strip(), re.IGNORECASE)
             if not m:
                 continue
             ayah_num = int(m.group(1))
-            if start_ayah <= ayah_num <= end_ayah and ayah_num not in sections:
-                sections[ayah_num] = text
+            if start_ayah <= ayah_num <= end_ayah:
+                section_text = part.strip()
+                # Prefer longer over first-wins: a later swipe may reveal more
+                # content for the same section (e.g., heading appeared near the
+                # viewport bottom on the first capture, full commentary not yet loaded).
+                if len(section_text) > len(sections.get(ayah_num, "")):
+                    sections[ayah_num] = section_text
 
     # Wait for popup to load
     if not d(text=cfg.POPUP_CONCISE_TAB_TEXT).exists(timeout=cfg.POPUP_APPEAR_TIMEOUT):
