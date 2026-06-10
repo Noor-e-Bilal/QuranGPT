@@ -262,7 +262,7 @@ def _scroll_popup_to_ayah(
         except Exception:
             pass
 
-        time.sleep(1.5)  # let content render after swipe
+        time.sleep(2.0)  # let content render after swipe (increased for slow ViewHolder loads)
 
         if _ayah_exists():
             root = _dump()
@@ -271,9 +271,13 @@ def _scroll_popup_to_ayah(
         new_root = _dump()
         new_fp = _root_fingerprint_fn(new_root)
 
-        if new_fp == last_fp:
+        is_transitional = new_fp[1] == -1  # no substantial nodes — RecyclerView between ViewHolders
+        if is_transitional:
+            # Don't count as stall: content is loading between sections; wait for it
+            stall = 0
+        elif new_fp == last_fp:
             stall += 1
-            if stall >= 3:
+            if stall >= 5:  # increased from 3: tolerate slow section loads
                 break  # truly stuck — swipe not landing or at bottom
         else:
             stall = 0
@@ -387,15 +391,19 @@ def extract_full_range(d, start_ayah: int, end_ayah: int) -> dict[int, str]:
         except Exception:
             pass
 
-        time.sleep(1.5)
+        time.sleep(2.0)  # let content render (increased for slow ViewHolder loads)
 
         new_root = _dump()
         _harvest(new_root)
 
         new_fp = _root_fingerprint_fn(new_root)
-        if new_fp == last_fp:
+        is_transitional = new_fp[1] == -1  # no substantial nodes — RecyclerView between ViewHolders
+        if is_transitional:
+            # Don't count as stall: content is loading between sections
+            stall = 0
+        elif new_fp == last_fp:
             stall += 1
-            if stall >= 3:
+            if stall >= 5:  # increased from 3: tolerate slow section loads
                 break  # reached bottom or swipe isn't landing
         else:
             stall = 0

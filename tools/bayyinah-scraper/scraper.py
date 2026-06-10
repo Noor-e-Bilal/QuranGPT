@@ -335,6 +335,8 @@ class BayyinahScraper:
             time.sleep(1.0)
 
             for ayah in ayahs:
+                is_targeted_fallback = False  # reset per ayah
+
                 # ── Check if this ayah belongs to an already-processed range ──
                 row = self.conn.execute(
                     "SELECT description_range FROM ayah_descriptions WHERE surah=? AND ayah=?",
@@ -358,9 +360,12 @@ class BayyinahScraper:
                         prog.save_refetch(surah, ayah)
                         continue
                     else:
-                        # Extraction was incomplete — evict and re-extract fresh
-                        del processed_ranges[range_key]
-                        print(f"  [{surah}:{ayah}] cache miss — evicting and re-extracting")
+                        # Extraction was incomplete — targeted scroll to this specific ayah.
+                        # DO NOT evict the cache: eviction + re-extract gives the same
+                        # partial result (same 12 sections) causing an infinite loop.
+                        # Instead, navigate to the ayah and let extract() scroll directly to it.
+                        is_targeted_fallback = True
+                        print(f"  [{surah}:{ayah}] cache miss — targeted scroll fallback")
 
                 # ── Navigate to this ayah and open its popup ──────────────────
                 target_coords = self._navigate_to_ayah_marker(ayah, surah)
@@ -383,10 +388,9 @@ class BayyinahScraper:
                         done += 1
                         continue
 
-                # skip_scroll=True: popup stays at range start so extract_full_range()
-                # can harvest from top → bottom without needing a scroll-to-top reset
-                # (downward swipes to reset position dismiss the BottomSheet).
-                content = extractor.extract(self.d, ayah, skip_scroll=True)
+                # skip_scroll=True  → popup stays at range start for extract_full_range
+                # skip_scroll=False → extract() scrolls directly to the expected ayah (targeted fallback)
+                content = extractor.extract(self.d, ayah, skip_scroll=not is_targeted_fallback)
 
                 if content is None:
                     self.close_popup()
@@ -396,36 +400,66 @@ class BayyinahScraper:
                     continue
 
                 if content.range_str is not None:
-                    # ── Range popup: scroll all the way to the bottom once ────
-                    # Extract every ayah section in the range in a single pass.
-                    # This avoids the per-ayah re-open + incomplete scroll cycle.
-                    print(f"[range {content.range_str}] full-scroll extracting all sections…",
-                          end=" ", flush=True)
-                    all_sections = extractor.extract_full_range(
-                        self.d, content.start_ayah, content.end_ayah
-                    )
-                    self.close_popup()
-
                     rk = f"{surah}:{content.range_str}"
-                    processed_ranges[rk] = all_sections
 
-                    # Save current ayah — it should be in all_sections (popup started
-                    # at range start and scrolled to bottom).  The fallback uses
-                    # content.raw_text (range-start text, not this ayah) only as a
-                    # last resort; log a warning so incomplete extractions are visible.
-                    if ayah in all_sections:
-                        ayah_text = all_sections[ayah]
+                    if is_targeted_fallback:
+                        # ── Targeted scroll path ─────────────────────────────
+                        # extract() scrolled directly to the expected ayah;
+                        # content.raw_text is the visible text at that position.
+                        # Split out just this ayah's section to avoid storing
+                        # surrounding sections as this ayah's commentary.
+                        self.close_popup()
+                        import re as _re
+                        parts = _re.split(
+                            r"\n\n(?=Ayah\s+\d+(?:\n|$))",
+                            content.raw_text,
+                            flags=_re.IGNORECASE,
+                        )
+                        ayah_text = content.raw_text  # fallback: all visible text at scroll pos
+                        for part in parts:
+                            _m = _re.match(r"Ayah\s+(\d+)", part.strip(), _re.IGNORECASE)
+                            if _m and int(_m.group(1)) == ayah:
+                                ayah_text = part.strip()
+                                break
+                        # Persist into cache so later in-range ayahs may hit it
+                        if rk in processed_ranges:
+                            processed_ranges[rk][ayah] = ayah_text
+                        db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
+                        done += 1
+                        print(
+                            f"✓ [{surah}:{ayah}] targeted-scroll range={content.range_str} "
+                            f"({len(ayah_text)} chars)  done={done}/{total}"
+                        )
                     else:
-                        ayah_text = content.raw_text
-                        print(f"  ⚠ [{surah}:{ayah}] not harvested — using range-start fallback")
-                    db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
+                        # ── Fresh range: scroll all the way to the bottom once ──
+                        # Extract every ayah section in the range in a single pass.
+                        # This avoids the per-ayah re-open + incomplete scroll cycle.
+                        print(f"[range {content.range_str}] full-scroll extracting all sections…",
+                              end=" ", flush=True)
+                        all_sections = extractor.extract_full_range(
+                            self.d, content.start_ayah, content.end_ayah
+                        )
+                        self.close_popup()
 
-                    done += 1
-                    print(
-                        f"✓ [{surah}:{ayah}] range={content.range_str} "
-                        f"({len(ayah_text)} chars)  done={done}/{total} "
-                        f"[{len(all_sections)} sections cached]"
-                    )
+                        processed_ranges[rk] = all_sections
+
+                        # Save current ayah — it should be in all_sections (popup started
+                        # at range start and scrolled to bottom).  The fallback uses
+                        # content.raw_text (range-start text, not this ayah) only as a
+                        # last resort; log a warning so incomplete extractions are visible.
+                        if ayah in all_sections:
+                            ayah_text = all_sections[ayah]
+                        else:
+                            ayah_text = content.raw_text
+                            print(f"  ⚠ [{surah}:{ayah}] not harvested — using range-start fallback")
+                        db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
+
+                        done += 1
+                        print(
+                            f"✓ [{surah}:{ayah}] range={content.range_str} "
+                            f"({len(ayah_text)} chars)  done={done}/{total} "
+                            f"[{len(all_sections)} sections cached]"
+                        )
                 else:
                     # ── Single ayah: original path ────────────────────────────
                     self.close_popup()
