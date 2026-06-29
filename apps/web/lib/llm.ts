@@ -11,7 +11,7 @@ import type {
 import { expandReformulation } from "./db";
 
 /** Default (reformulation) model — always minimax via opencode.ai. */
-const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? "minimax-m2.5-free";
+const DEFAULT_MODEL = process.env.ANTHROPIC_MODEL ?? "deepseek-v4-flash-free";
 
 /** Build the right SDK client based on ProviderSettings. Falls back to default. */
 function getClient(

@@ -1,4 +1,4 @@
-import { getAyah, getSurah, getAllSurahs } from '@/lib/db';
+import { getAyah, getSurah, getTafsirDescription, getAllSurahs } from '@/lib/db';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Metadata } from 'next';
@@ -62,6 +62,8 @@ export default async function VersePage({ params }: Props) {
   const ayah = getAyah(ch, vs);
   const surahRow = getSurah(ch);
   if (!ayah || !surahRow) notFound();
+
+  const tafsir = getTafsirDescription(ch, vs);
 
   const prevVerse = vs > 1 ? vs - 1 : null;
   const nextVerse = vs < surahRow.ayah_count ? vs + 1 : null;
@@ -142,6 +144,40 @@ export default async function VersePage({ params }: Props) {
             {ayah.reference} · The Clear Quran (Mustafa Khattab)
           </p>
         </div>
+
+        {/* Tafsir comparison */}
+        {tafsir && (
+          <section>
+            <h2 className="text-lg font-semibold text-emerald-300 mb-3">Tafsir</h2>
+            <div className="flex flex-col md:flex-row gap-4">
+              {/* Reworded description */}
+              {tafsir.description_reworded && (
+                <div className="flex-1 min-w-0 rounded-xl border border-emerald-700/30 bg-emerald-950/20 overflow-hidden">
+                  <div className="px-4 py-2 border-b border-emerald-700/20 bg-emerald-900/20">
+                    <span className="text-xs font-semibold text-emerald-400 uppercase tracking-wider">
+                      Reworded
+                    </span>
+                  </div>
+                  <div className="p-4 text-sm text-slate-200 leading-relaxed whitespace-pre-wrap">
+                    {tafsir.description_reworded}
+                  </div>
+                </div>
+              )}
+
+              {/* Original description */}
+              <div className="flex-1 min-w-0 rounded-xl border border-slate-700 bg-slate-800/60 overflow-hidden">
+                <div className="px-4 py-2 border-b border-slate-700">
+                  <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                    Original
+                  </span>
+                </div>
+                <div className="p-4 text-sm text-slate-300 leading-relaxed whitespace-pre-wrap">
+                  {tafsir.description}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* Navigation */}
         <nav className="flex items-center justify-between gap-4">

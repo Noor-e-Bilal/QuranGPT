@@ -30,7 +30,7 @@ export const PROVIDER_MODELS: Record<LLMProvider, string[]> = {
 
 export const DEFAULT_PROVIDER_SETTINGS: ProviderSettings = {
   provider: 'opencode',
-  model: 'minimax-m2.5-free',
+  model: 'deepseek-v4-flash-free',
   temperature: 0.7,
 };
 
@@ -48,6 +48,14 @@ export interface SurahRow {
   surah: number;
   name_en: string;
   ayah_count: number;
+}
+
+export interface TafsirRow {
+  surah: number;
+  ayah: number;
+  description: string;
+  description_range: string | null;
+  description_reworded: string | null;
 }
 
 export interface EvidenceAyah extends AyahRow {

@@ -18,12 +18,11 @@ scripts/ingest/__pycache__/
 venv/
 *.egg-info/
 
-# Data (generated at runtime)
-data/quran.db
+# Data (generated at runtime — tracked: core DBs, ignored: chroma blob store, temp files, intermediates)
 data/chroma/
 data/ayahs.json
 data/index_meta.json
-data/*.db
+data/index_meta_base.json
 
 # Env
 .env
@@ -35,6 +34,10 @@ data/*.db
 .DS_Store
 *.swp
 *.swo
+
+# Temp
+tmp/
+Docs/tmp/
 
 # Terraform
 infra/.terraform/

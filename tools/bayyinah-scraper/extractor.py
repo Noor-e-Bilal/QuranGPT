@@ -58,19 +58,34 @@ def split_ayah_sections(text: str, start_ayah: int, end_ayah: int) -> dict[int, 
         [description paragraphs...]
         ...
 
+    Some popups use SEPARATE TextViews per heading (no \n between heading
+    and content), so we try \n\n first, then fall back to direct heading
+    scanning if that yields only 0-1 sections.
+
     Returns {ayah_number: section_text} for each ayah in [start_ayah, end_ayah].
     Falls back to the full text for every ayah if splitting fails.
     """
-    # Split at every "\n\nAyah N\n" boundary, keeping the heading in each part.
-    # The lookahead ensures "Ayah N" stays at the start of its part.
-    parts = re.split(r"\n\n(?=Ayah\s+\d+(?:\n|$))", text, flags=re.IGNORECASE)
-
     sections: dict[int, str] = {}
-    for part in parts:
-        m = re.match(r"Ayah\s+(\d+)", part.strip(), re.IGNORECASE)
-        if m:
-            ayah_num = int(m.group(1))
-            sections[ayah_num] = part.strip()
+
+    def _try_split(sep: str) -> dict[int, str]:
+        out = {}
+        parts = re.split(
+            rf"{sep}(?=Ayah\s+\d+(?:\n|$))", text, flags=re.IGNORECASE
+        )
+        for part in parts:
+            m = re.match(r"Ayah\s+(\d+)", part.strip(), re.IGNORECASE)
+            if m:
+                ayah_num = int(m.group(1))
+                out[ayah_num] = part.strip()
+        return out
+
+    # Strategy 1: split on \n\n (most common in joined-TextView format)
+    sections = _try_split(r"\n\n")
+    valid = sum(1 for a in range(start_ayah, end_ayah + 1) if a in sections)
+
+    # Strategy 2: if \n\n yielded < 50% coverage, try \n
+    if valid < (end_ayah - start_ayah + 1) * 0.5:
+        sections = _try_split(r"\n")
 
     if not sections:
         # Splitting failed — give every ayah the full text (safe fallback)
@@ -149,7 +164,7 @@ def _root_fingerprint_fn(root: ET.Element | None) -> tuple[str, int]:
 
 
 def _scroll_popup_to_ayah(
-    d, target_ayah: int, max_scrolls: int = 25
+    d, target_ayah: int, max_scrolls: int = 40
 ) -> tuple[bool, ET.Element | None]:
     """
     Scroll the popup's content area until the heading for target_ayah is visible.
@@ -180,18 +195,20 @@ def _scroll_popup_to_ayah(
         """
         Check if the section for target_ayah is currently on screen.
 
-        The popup stores each ayah's section as ONE large TextView whose text
-        starts with "Ayah N\\n\\n[Arabic]\\n\\n[Commentary]...".  We cannot use
-        text= (exact match) — we need textStartsWith or textContains.
-        Try both to handle potential whitespace/encoding variations.
+        For single-TextView sections the heading has a trailing \n:
+            "Ayah 221\n\nArabic\n\nCommentary..."
+        For SEPARATE-TextView sections the heading node has ONLY the number:
+            "Ayah 221" (no trailing \n)
+
+        We try exact match (no \n) first for the separate-TextView case,
+        then textContains with \n for the single-TextView case.
         """
         try:
             heading = f"Ayah {target_ayah}"
-            # textContains with trailing \n is delimiter-safe (won't confuse
-            # "Ayah 23" with "Ayah 230").  textStartsWith is a fallback only.
             return (
-                d(textContains=f"{heading}\n").exists(timeout=0.3)
+                d(text=heading).exists(timeout=0.3)
                 or d(textStartsWith=f"{heading}\n").exists(timeout=0.3)
+                or d(textContains=f"{heading}\n").exists(timeout=0.3)
             )
         except Exception:
             return False
@@ -203,13 +220,15 @@ def _scroll_popup_to_ayah(
             return None
 
     def _visible(root):
-        target_re = re.compile(
-            rf'(?:^|\n\n?)Ayah\s+{target_ayah}(?:\W|$)', re.IGNORECASE | re.MULTILINE
-        )
-        return any(
-            target_re.search(n.attrib.get("text", ""))
-            for n in root.iter()
-        )
+        for n in root.iter():
+            t = n.attrib.get("text", "")
+            if not t:
+                continue
+            if re.match(rf"Ayah\s+{target_ayah}\s*$", t, re.IGNORECASE):
+                return True
+            if re.search(rf"Ayah\s+{target_ayah}(?:\W|$)", t, re.IGNORECASE):
+                return True
+        return False
 
     # ── check already visible (fast path) ───────────────────────────────────
     if _ayah_exists():
@@ -217,25 +236,19 @@ def _scroll_popup_to_ayah(
         return (True, root) if root else (False, None)
 
     # ── find the popup's inner ScrollView ────────────────────────────────────
-    # IMPORTANT: target android.widget.ScrollView by class name — see
-    # _find_popup_scroll() for the full rationale.
     def _popup_scroll():
         return _find_popup_scroll(d)
 
     # ── Strategy 1: UIAutomator2 scroll.to() on the popup ScrollView ─────────
-    # scroll.to() calls UiScrollable.scrollIntoView(UiSelector) → dispatches
-    # ACTION_SCROLL_FORWARD accessibility actions on the inner ScrollView only.
-    # Use textContains with trailing \n as delimiter so "Ayah 23" won't match
-    # "Ayah 230".
     try:
         popup_scroll = _popup_scroll()
         heading = f"Ayah {target_ayah}"
         found_s1 = (
             popup_scroll.scroll.to(textContains=f"{heading}\n")
-            or popup_scroll.scroll.to(textContains=heading)  # fallback: no \n
+            or popup_scroll.scroll.to(textContains=heading)
         )
         if found_s1:
-            time.sleep(0.5)
+            time.sleep(1.0)  # increased from 0.5: let content fully render
             if _ayah_exists():
                 root = _dump()
                 return (True, root) if root else (False, None)
@@ -246,15 +259,12 @@ def _scroll_popup_to_ayah(
     # scroll.forward() (accessibility action) returns False immediately on this
     # popup — the app's canScrollForward() is misconfigured even though the view
     # IS scrollable via touch.  Fall back to a raw d.swipe() gesture.
-    #
-    # Swipe UP (finger moves up = content reveals what's below) from within the
-    # LOWER portion of the ScrollView so the BottomSheet drag handle at the top
-    # doesn't intercept the gesture.
 
     last_root = _dump()
     last_fp = _root_fingerprint_fn(last_root)
     stall = 0
     fx, fy, tx, ty = _get_popup_swipe_coords(d)
+    no_progress_count = 0
 
     for _ in range(max_scrolls):
         try:
@@ -262,7 +272,7 @@ def _scroll_popup_to_ayah(
         except Exception:
             pass
 
-        time.sleep(2.0)  # let content render after swipe (increased for slow ViewHolder loads)
+        time.sleep(2.0)
 
         if _ayah_exists():
             root = _dump()
@@ -271,18 +281,19 @@ def _scroll_popup_to_ayah(
         new_root = _dump()
         new_fp = _root_fingerprint_fn(new_root)
 
-        is_transitional = new_fp[1] == -1  # no substantial nodes — RecyclerView between ViewHolders
+        is_transitional = new_fp[1] == -1
         if is_transitional:
-            # Don't count as stall: content is loading between sections; wait for it
             stall = 0
         elif new_fp == last_fp:
             stall += 1
-            if stall >= 5:  # increased from 3: tolerate slow section loads
-                break  # truly stuck — swipe not landing or at bottom
+            if stall >= 8:
+                no_progress_count += 1
+                if no_progress_count >= 2:
+                    break  # truly stuck after two stall cycles
+                stall = 0  # reset and try once more
         else:
             stall = 0
-            # Only update last_root/fp from a valid dump to avoid losing the
-            # last known good position on transient dump failures.
+            no_progress_count = 0
             if new_root is not None:
                 last_root = new_root
                 last_fp = new_fp
@@ -292,19 +303,14 @@ def _scroll_popup_to_ayah(
 
 def extract_full_range(d, start_ayah: int, end_ayah: int) -> dict[int, str]:
     """
-    Extract ALL section texts from a range popup in a single popup open.
+    Extract as many ayah sections as possible from the range popup.
 
-    The popup opens at start_ayah.  This function scrolls from top to bottom,
-    harvesting every "Ayah N" ViewHolder node that becomes visible.  Sections
-    are returned as {ayah_num: section_text} for the full range.
+    Uses short touch swipes (200 px upward — less triggering of the
+    BottomSheet drag gesture).  If 3 consecutive swipes produce no
+    change in the visible popup text the function bails out immediately
+    and returns whatever sections it harvested so far.
 
-    This replaces the per-ayah scroll approach which suffered from:
-      - max_scrolls=25 too small for large ranges (e.g., 31-69 = 39 ayahs)
-      - per-ayah re-open causing cycling duplicates when scroll didn't reach target
-      - long processing time (N popup opens per N-ayah range)
-
-    Returns {ayah_num: section_text}.  Ayahs not found get the initial raw text
-    as fallback so callers always have something to store.
+    Returns {ayah_num: section_text}.  Missing sections are left out.
     """
     import time
 
@@ -316,49 +322,67 @@ def extract_full_range(d, start_ayah: int, end_ayah: int) -> dict[int, str]:
         except Exception:
             return None
 
-    def _harvest(root: ET.Element | None) -> None:
-        """
-        Collect section texts from the currently visible hierarchy.
-
-        Uses _find_ayah_text() to get all visible text concatenated with \\n\\n,
-        then splits at "Ayah N" heading boundaries.
-
-        Why not match individual nodes:
-          The popup uses SEPARATE TextViews — one node for the "Ayah N" heading
-          (text = "Ayah 221", no trailing newline), one for Arabic, one for commentary.
-          re.match(r"Ayah N\\n") on "Ayah 221" always fails.
-          _find_ayah_text() concatenates those nodes; split_ayah_sections() handles
-          that concatenated format correctly.
-
-        Intentionally omits the fallback in split_ayah_sections() that assigns the
-        full text to every ayah when splitting fails — that would re-introduce duplicates.
-        """
+    def _harvest(root: ET.Element | None) -> int:
         if root is None:
-            return
-        visible_text = _find_ayah_text(root)
-        if not visible_text:
-            return
-        # Split at \\n\\nAyah N\\n (or \\n\\nAyah N$) — same logic as split_ayah_sections
-        # but WITHOUT the fallback that assigns full text to every ayah on failure.
-        parts = re.split(r"\n\n(?=Ayah\s+\d+(?:\n|$))", visible_text, flags=re.IGNORECASE)
-        for part in parts:
-            m = re.match(r"Ayah\s+(\d+)", part.strip(), re.IGNORECASE)
-            if not m:
-                continue
-            ayah_num = int(m.group(1))
-            if start_ayah <= ayah_num <= end_ayah:
-                section_text = part.strip()
-                # Prefer longer over first-wins: a later swipe may reveal more
-                # content for the same section (e.g., heading appeared near the
-                # viewport bottom on the first capture, full commentary not yet loaded).
-                if len(section_text) > len(sections.get(ayah_num, "")):
-                    sections[ayah_num] = section_text
+            return 0
+        before = len(sections)
 
-    # Wait for popup to load
+        visible_text = _find_ayah_text(root)
+        if visible_text:
+            for sep in (r"\n\n", r"\n"):
+                parts = re.split(
+                    rf"{sep}(?=Ayah\s+\d+(?:\n|$))", visible_text, flags=re.IGNORECASE
+                )
+                ayah_count = sum(
+                    1 for p in parts if re.match(r"Ayah\s+\d+", p.strip(), re.IGNORECASE)
+                )
+                if ayah_count > 1:
+                    for part in parts:
+                        m = re.match(r"Ayah\s+(\d+)", part.strip(), re.IGNORECASE)
+                        if not m:
+                            continue
+                        ayah_num = int(m.group(1))
+                        if start_ayah <= ayah_num <= end_ayah:
+                            section_text = part.strip()
+                            if len(section_text) > len(sections.get(ayah_num, "")):
+                                sections[ayah_num] = section_text
+                    break
+
+        _collect_raw_sections(root, sections, start_ayah, end_ayah)
+        return len(sections) - before
+
+    def _collect_raw_sections(
+        root: ET.Element, out: dict[int, str], sa: int, ea: int
+    ) -> None:
+        nodes: list[tuple[ET.Element, str]] = []
+        for n in root.iter():
+            t = n.attrib.get("text", "")
+            if t and t.strip() and t not in _TAB_NAMES:
+                nodes.append((n, t.strip()))
+        i = 0
+        while i < len(nodes):
+            _n, t = nodes[i]
+            m = re.match(r"Ayah\s+(\d+)", t, re.IGNORECASE)
+            if m and sa <= int(m.group(1)) <= ea:
+                ayah_num = int(m.group(1))
+                group_parts = [t]
+                i += 1
+                while i < len(nodes):
+                    if re.match(r"Ayah\s+\d+", nodes[i][1], re.IGNORECASE):
+                        break
+                    group_parts.append(nodes[i][1])
+                    i += 1
+                section_text = "\n\n".join(group_parts)
+                if len(section_text) > len(out.get(ayah_num, "")):
+                    out[ayah_num] = section_text
+            else:
+                i += 1
+
+    # ── Wait for popup to appear and content to load ──────────────────────
     if not d(text=cfg.POPUP_CONCISE_TAB_TEXT).exists(timeout=cfg.POPUP_APPEAR_TIMEOUT):
         return {}
 
-    for _ in range(40):
+    for _ in range(20):
         time.sleep(0.5)
         root = _dump()
         if root is not None:
@@ -368,52 +392,72 @@ def extract_full_range(d, start_ayah: int, end_ayah: int) -> dict[int, str]:
             if not has_spinner:
                 break
 
-    # NOTE: The caller (scraper.py) must call extract(d, ayah, skip_scroll=True) so
-    # the popup is still at the range start when we begin harvesting here.
-    # A downward-swipe "scroll to top" would dismiss the BottomSheet — don't attempt it.
-
-    # Initial harvest (popup at range start = start_ayah)
-    root = _dump()
-    _harvest(root)
-
-    # Scroll all the way to the bottom, harvesting new sections as they appear
     fx, fy, tx, ty = _get_popup_swipe_coords(d)
-    last_fp = _root_fingerprint_fn(root)
-    stall = 0
 
-    for _ in range(150):  # generous limit: 150 swipes × ~600 px = ~90,000 px
-        # Stop early if we have every section
-        if all(a in sections for a in range(start_ayah, end_ayah + 1)):
+    # ── Harvest initial visible content ──────────────────────────────────
+    for _ in range(10):
+        time.sleep(0.5)
+        root = _dump()
+        _harvest(root)
+
+    def _all_done():
+        return all(a in sections for a in range(start_ayah, end_ayah + 1))
+
+    def _popup_text(root) -> str:
+        """Return visible text from the popup for change detection."""
+        text = _find_ayah_text(root)
+        if text:
+            return text.strip()
+        return ""
+
+    # ── Scroll-harvest loop ─────────────────────────────────────────────
+    # The LazyColumn loads content asynchronously — items may appear in
+    # the accessibility tree over 30-60 s even without scrolling.  We keep
+    # polling for 6 s after every swipe attempt to catch async loads.
+    #
+    # Uses the FULL default scroll distance (~750 px, same as
+    # _scroll_popup_to_ayah which WORKS).  Previously a 200 px reduction
+    # was too short to trigger RecyclerView view rebinding, causing every
+    # swipe to show the same content and only the first ayah to be captured.
+    no_change = 0
+    last_text = ""
+
+    for iteration in range(30):
+        if _all_done():
             break
+
+        r = _dump()
+        _harvest(r)
 
         try:
             d.swipe(fx, fy, tx, ty, duration=0.3)
         except Exception:
             pass
 
-        time.sleep(2.0)  # let content render (increased for slow ViewHolder loads)
+        # Wait 6 s after swipe — async LazyColumn content needs time to bind
+        for _ in range(12):
+            time.sleep(0.5)
+            r = _dump()
+            _harvest(r)
 
-        new_root = _dump()
-        _harvest(new_root)
-
-        new_fp = _root_fingerprint_fn(new_root)
-        is_transitional = new_fp[1] == -1  # no substantial nodes — RecyclerView between ViewHolders
-        if is_transitional:
-            # Don't count as stall: content is loading between sections
-            stall = 0
-        elif new_fp == last_fp:
-            stall += 1
-            if stall >= 5:  # increased from 3: tolerate slow section loads
-                break  # reached bottom or swipe isn't landing
+        # Text-change bailout: 5 consecutive identical results = stuck
+        r = _dump()
+        current_text = _popup_text(r) or ""
+        if current_text == last_text:
+            no_change += 1
+            if no_change >= 5:
+                break
         else:
-            stall = 0
-            if new_root is not None:
-                last_fp = new_fp
+            no_change = 0
+            last_text = current_text
 
-    # Return only what was actually harvested.
-    # Missing sections are NOT filled with initial_text — the caller's cache-eviction
-    # logic will re-extract them on the next encounter rather than silently storing
-    # wrong text (the range-start section) for every unharvested ayah.
+    # ── Final prolonged harvest (up to 15 s) ────────────────────────────
+    # Content sometimes trickles in well after the last swipe.
+    for _ in range(30):
+        time.sleep(0.5)
+        r = _dump()
+        _harvest(r)
+
     return sections
 
 
@@ -548,10 +592,19 @@ def _find_ayah_text(root: ET.Element) -> str | None:
         if parts:
             return "\n\n".join(parts)
 
-    # Fallback: look for any TextView whose text starts with "Ayah"
+    # Fallback: collect ALL text from the popup area (below tab row, above nav bar)
+    # by finding the large content container and iterating its text children.
     for node in root.iter():
-        text = node.attrib.get("text", "")
-        if text and re.match(r"Ayahs?\s+\d+", text, re.IGNORECASE):
-            return text
+        b = node.attrib.get("bounds", "")
+        nums = list(map(int, re.findall(r"\d+", b)))
+        if len(nums) < 4:
+            continue
+        content_h = nums[3] - nums[1]
+        if nums[1] > 500 and content_h > 200:
+            parts = _collect_text(node)
+            if parts:
+                joined = "\n\n".join(parts)
+                if re.search(r"Ayahs?\s+\d+", joined, re.IGNORECASE):
+                    return joined
 
     return None

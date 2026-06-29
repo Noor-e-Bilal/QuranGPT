@@ -167,7 +167,7 @@ class BayyinahScraper:
                 h = b[3] - b[1]
                 cy = (b[1] + b[3]) // 2
                 # Verse number circles are narrow, and above the bottom UI bar
-                if 4 < w < 80 and 4 < h < 80 and cy < bottom_cutoff:
+                if 2 < w < 150 and 2 < h < 150 and cy < bottom_cutoff:
                     cx = (b[0] + b[2]) // 2
                     results.append((n, cx, cy))
         except Exception as e:
@@ -234,11 +234,17 @@ class BayyinahScraper:
         Navigate the Quran reading view until target_ayah's marker is visible.
 
         Swipes forward if the current page is before the target, backward if
-        we've overshot. Re-opens the surah after 25 failed swipes as a last resort.
+        we've overshot. Re-opens the surah after 15 failed swipes as a last resort.
+
+        Uses a two-phase search: first binary-search by page range, then
+        fine-tune when the target is between min and max visible markers.
 
         Returns (cx, cy) of the marker, or None if not found.
         """
         reopened = False
+        last_markers: list[tuple[int, int, int]] = []
+        overshot = False
+
         for attempt in range(max_swipes):
             markers = self.find_verse_markers()
 
@@ -247,19 +253,36 @@ class BayyinahScraper:
                 if hit:
                     return hit[1], hit[2]
 
-                # Determine direction: if smallest visible marker > target we've overshot
                 min_visible = min(m[0] for m in markers)
-                if min_visible > target_ayah:
+                max_visible = max(m[0] for m in markers)
+
+                # Target is between min and max but not found — it's on the current page
+                # but the marker element itself wasn't detected. Try detection near the expected position.
+                if min_visible <= target_ayah <= max_visible:
+                    # Re-scan all elements near the expected ayah area
+                    fresh = self._autodetect_verse_markers()
+                    hit = next((m for m in fresh if m[0] == target_ayah), None)
+                    if hit:
+                        return hit[1], hit[2]
+                    # Even with re-scan, couldn't find — overshoot guard: try next page
+                    self.swipe_next_quran_page()
+                    overshot = False
+                elif min_visible > target_ayah:
+                    self.swipe_prev_quran_page()
+                    overshot = True
+                else:
+                    self.swipe_next_quran_page()
+                    overshot = False
+            else:
+                # No markers at all — swipe forward (might be a decoration/bismillah page)
+                if overshot:
                     self.swipe_prev_quran_page()
                 else:
                     self.swipe_next_quran_page()
-            else:
-                # No markers at all — swipe forward (might be a decoration/bismillah page)
-                self.swipe_next_quran_page()
 
-            # Mid-way fallback: re-open surah to reset position
-            if attempt == 24 and not reopened:
-                print(f"  [{surah}:{target_ayah}] ⚠ 25 swipes without finding marker — re-opening surah")
+            # Re-open surah if stuck for too many swipes
+            if attempt in (14, 34) and not reopened:
+                print(f"  [{surah}:{target_ayah}] ⚠ multiple swipes without finding marker — re-opening surah")
                 self.navigate_to_surahs_tab()
                 self.open_surah(surah)
                 time.sleep(1.0)
@@ -409,18 +432,10 @@ class BayyinahScraper:
                         # Split out just this ayah's section to avoid storing
                         # surrounding sections as this ayah's commentary.
                         self.close_popup()
-                        import re as _re
-                        parts = _re.split(
-                            r"\n\n(?=Ayah\s+\d+(?:\n|$))",
-                            content.raw_text,
-                            flags=_re.IGNORECASE,
+                        sections = extractor.split_ayah_sections(
+                            content.raw_text, content.start_ayah, content.end_ayah
                         )
-                        ayah_text = content.raw_text  # fallback: all visible text at scroll pos
-                        for part in parts:
-                            _m = _re.match(r"Ayah\s+(\d+)", part.strip(), _re.IGNORECASE)
-                            if _m and int(_m.group(1)) == ayah:
-                                ayah_text = part.strip()
-                                break
+                        ayah_text = sections.get(ayah, content.raw_text)
                         # Persist into cache so later in-range ayahs may hit it
                         if rk in processed_ranges:
                             processed_ranges[rk][ayah] = ayah_text
@@ -443,22 +458,28 @@ class BayyinahScraper:
 
                         processed_ranges[rk] = all_sections
 
-                        # Save current ayah — it should be in all_sections (popup started
-                        # at range start and scrolled to bottom).  The fallback uses
-                        # content.raw_text (range-start text, not this ayah) only as a
-                        # last resort; log a warning so incomplete extractions are visible.
+                        # Save ALL harvested sections to DB immediately — not just the
+                        # current ayah.  This prevents "cache miss" for subsequent ayahs
+                        # in the same range that were successfully harvested, saving a
+                        # full re-navigate + re-long-press cycle per ayah.
+                        harvested = 0
+                        for a_num, a_text in all_sections.items():
+                            db.upsert_description(self.conn, surah, a_num, a_text, content.range_str)
+                            harvested += 1
+
+                        # Ensure current ayah is saved even if it wasn't harvested
                         if ayah in all_sections:
                             ayah_text = all_sections[ayah]
                         else:
                             ayah_text = content.raw_text
+                            db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
                             print(f"  ⚠ [{surah}:{ayah}] not harvested — using range-start fallback")
-                        db.upsert_description(self.conn, surah, ayah, ayah_text, content.range_str)
 
                         done += 1
                         print(
                             f"✓ [{surah}:{ayah}] range={content.range_str} "
                             f"({len(ayah_text)} chars)  done={done}/{total} "
-                            f"[{len(all_sections)} sections cached]"
+                            f"[{harvested} ayahs saved from harvest]"
                         )
                 else:
                     # ── Single ayah: original path ────────────────────────────

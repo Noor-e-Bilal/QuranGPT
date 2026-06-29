@@ -1,17 +1,38 @@
 import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
-import type { AyahRow, SurahRow } from './types';
+import type { AyahRow, SurahRow, TafsirRow } from './types';
 
 const DB_PATH =
   process.env.DB_PATH ?? path.join(process.cwd(), '../../data/quran.db');
+const TAFSIR_DB_PATH =
+  process.env.TAFSIR_DB_PATH ?? path.join(process.cwd(), '../../data/quran-with-tafsir-data.db');
 
 let _db: DatabaseSync | null = null;
+let _tafsirDb: DatabaseSync | null = null;
 
 function getDb(): DatabaseSync {
   if (!_db) {
     _db = new DatabaseSync(DB_PATH, { readOnly: true });
   }
   return _db;
+}
+
+function getTafsirDb(): DatabaseSync {
+  if (!_tafsirDb) {
+    _tafsirDb = new DatabaseSync(TAFSIR_DB_PATH, { readOnly: true });
+  }
+  return _tafsirDb;
+}
+
+export function getTafsirDescription(chapter: number, verse: number): TafsirRow | null {
+  try {
+    const row = getTafsirDb()
+      .prepare('SELECT surah, ayah, description, description_range, description_reworded FROM ayah_descriptions WHERE surah = ? AND ayah = ?')
+      .get(chapter, verse);
+    return toPlain<TafsirRow>(row);
+  } catch {
+    return null;
+  }
 }
 
 function toPlain<T>(row: unknown): T | null {
