@@ -68,9 +68,15 @@ jobs:
               "Version": "2012-10-17",
               "Statement": [
                 {
-                  "Sid": "ECRAll",
+                  "Sid": "ECRGetAuth",
                   "Effect": "Allow",
-                  "Action": ["ecr:GetAuthorizationToken", "ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"],
+                  "Action": ["ecr:GetAuthorizationToken"],
+                  "Resource": ["*"]
+                },
+                {
+                  "Sid": "ECRPush",
+                  "Effect": "Allow",
+                  "Action": ["ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"],
                   "Resource": ["arn:aws:ecr:us-east-1:'$ACCOUNT_ID':repository/quransays-prod-web", "arn:aws:ecr:us-east-1:'$ACCOUNT_ID':repository/qurangpt-prod-web"]
                 },
                 {
