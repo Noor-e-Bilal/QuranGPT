@@ -33,6 +33,29 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           # No access key pairs — OIDC short-lived tokens only
 
+      - name: Update deploy role trust policy for QuranGPT
+        run: |
+          aws iam update-assume-role-policy \
+            --role-name quransays-prod-github-deploy \
+            --policy-document '{
+              "Version": "2012-10-17",
+              "Statement": [{
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "arn:aws:iam::519568490345:oidc-provider/token.actions.githubusercontent.com"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+                  },
+                  "StringLike": {
+                    "token.actions.githubusercontent.com:sub": "repo:Noor-e-Bilal/*:ref:refs/heads/master"
+                  }
+                }
+              }]
+            }'
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2

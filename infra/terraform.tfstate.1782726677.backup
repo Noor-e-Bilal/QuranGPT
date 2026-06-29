@@ -1,0 +1,2164 @@
+{
+  "version": 4,
+  "terraform_version": "1.12.0",
+  "serial": 145,
+  "lineage": "dc510050-dea8-57fc-1a13-7551305e7bc0",
+  "outputs": {
+    "alb_dns_name": {
+      "value": "quransays-prod-alb-474951414.us-east-1.elb.amazonaws.com",
+      "type": "string"
+    },
+    "alb_zone_id": {
+      "value": "Z35SXDOTRQ7X7K",
+      "type": "string"
+    },
+    "build_assets_bucket": {
+      "value": "quransays-prod-build-assets",
+      "type": "string"
+    },
+    "ecr_repository_url": {
+      "value": "519568490345.dkr.ecr.us-east-1.amazonaws.com/quransays-prod-web",
+      "type": "string"
+    },
+    "ecs_cluster_name": {
+      "value": "quransays-prod-cluster",
+      "type": "string"
+    },
+    "ecs_task_definition_arn": {
+      "value": "arn:aws:ecs:us-east-1:519568490345:task-definition/quransays-prod-app:15",
+      "type": "string"
+    },
+    "efs_id": {
+      "value": "fs-071e3ed1c6497b82c",
+      "type": "string"
+    },
+    "github_actions_role_arn": {
+      "value": "arn:aws:iam::519568490345:role/quransays-prod-github-deploy",
+      "type": "string"
+    },
+    "secret_arns": {
+      "value": {
+        "anthropic": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/anthropic-api-key-JJXi6n",
+        "claude": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/claude-api-key-HOPlsq",
+        "openai": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openai-api-key-1Sogwu",
+        "openrouter": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openrouter-api-key-AQbYct"
+      },
+      "type": [
+        "object",
+        {
+          "anthropic": "string",
+          "claude": "string",
+          "openai": "string",
+          "openrouter": "string"
+        }
+      ],
+      "sensitive": true
+    }
+  },
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "chroma",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-chroma",
+            "id": "/ecs/quransays-prod-chroma",
+            "kms_key_id": "",
+            "log_group_class": "STANDARD",
+            "name": "/ecs/quransays-prod-chroma",
+            "name_prefix": "",
+            "retention_in_days": 14,
+            "skip_destroy": false,
+            "tags": {
+              "Name": "quransays-prod-logs-chroma"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-logs-chroma",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "mongodb",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-mongodb",
+            "id": "/ecs/quransays-prod-mongodb",
+            "kms_key_id": "",
+            "log_group_class": "STANDARD",
+            "name": "/ecs/quransays-prod-mongodb",
+            "name_prefix": "",
+            "retention_in_days": 14,
+            "skip_destroy": false,
+            "tags": {
+              "Name": "quransays-prod-logs-mongodb"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-logs-mongodb",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "valkey",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-valkey",
+            "id": "/ecs/quransays-prod-valkey",
+            "kms_key_id": "",
+            "log_group_class": "STANDARD",
+            "name": "/ecs/quransays-prod-valkey",
+            "name_prefix": "",
+            "retention_in_days": 7,
+            "skip_destroy": false,
+            "tags": {
+              "Name": "quransays-prod-logs-valkey"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-logs-valkey",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_cloudwatch_log_group",
+      "name": "web",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-web",
+            "id": "/ecs/quransays-prod-web",
+            "kms_key_id": "",
+            "log_group_class": "STANDARD",
+            "name": "/ecs/quransays-prod-web",
+            "name_prefix": "",
+            "retention_in_days": 30,
+            "skip_destroy": false,
+            "tags": {
+              "Name": "quransays-prod-logs-web"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-logs-web",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_ecr_lifecycle_policy",
+      "name": "web",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "quransays-prod-web",
+            "policy": "{\"rules\":[{\"action\":{\"type\":\"expire\"},\"description\":\"Retain the last 10 images; expire older ones\",\"rulePriority\":1,\"selection\":{\"countNumber\":10,\"countType\":\"imageCountMoreThan\",\"tagStatus\":\"any\"}}]}",
+            "registry_id": "519568490345",
+            "repository": "quransays-prod-web"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_ecr_repository.web"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_ecr_repository",
+      "name": "web",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ecr:us-east-1:519568490345:repository/quransays-prod-web",
+            "encryption_configuration": [
+              {
+                "encryption_type": "AES256",
+                "kms_key": ""
+              }
+            ],
+            "force_delete": null,
+            "id": "quransays-prod-web",
+            "image_scanning_configuration": [
+              {
+                "scan_on_push": true
+              }
+            ],
+            "image_tag_mutability": "MUTABLE",
+            "name": "quransays-prod-web",
+            "registry_id": "519568490345",
+            "repository_url": "519568490345.dkr.ecr.us-east-1.amazonaws.com/quransays-prod-web",
+            "tags": {
+              "Name": "quransays-prod-web"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-web",
+              "Project": "quransays"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxMjAwMDAwMDAwMDAwfX0="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_efs_access_point",
+      "name": "mongodb",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:elasticfilesystem:us-east-1:519568490345:access-point/fsap-015d5b4f5d10d828c",
+            "file_system_arn": "arn:aws:elasticfilesystem:us-east-1:519568490345:file-system/fs-071e3ed1c6497b82c",
+            "file_system_id": "fs-071e3ed1c6497b82c",
+            "id": "fsap-015d5b4f5d10d828c",
+            "owner_id": "519568490345",
+            "posix_user": [
+              {
+                "gid": 999,
+                "secondary_gids": [],
+                "uid": 999
+              }
+            ],
+            "root_directory": [
+              {
+                "creation_info": [
+                  {
+                    "owner_gid": 999,
+                    "owner_uid": 999,
+                    "permissions": "0750"
+                  }
+                ],
+                "path": "/mongodb"
+              }
+            ],
+            "tags": {
+              "Name": "quransays-prod-ap-mongodb"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-ap-mongodb",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_efs_file_system.data"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_efs_file_system",
+      "name": "data",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:elasticfilesystem:us-east-1:519568490345:file-system/fs-071e3ed1c6497b82c",
+            "availability_zone_id": "",
+            "availability_zone_name": "",
+            "creation_token": "quransays-prod-data",
+            "dns_name": "fs-071e3ed1c6497b82c.efs.us-east-1.amazonaws.com",
+            "encrypted": true,
+            "id": "fs-071e3ed1c6497b82c",
+            "kms_key_id": "arn:aws:kms:us-east-1:519568490345:key/a23ba3bd-a9b3-41f4-89c5-353f294991da",
+            "lifecycle_policy": [
+              {
+                "transition_to_archive": "",
+                "transition_to_ia": "AFTER_30_DAYS",
+                "transition_to_primary_storage_class": ""
+              }
+            ],
+            "name": "quransays-prod-data",
+            "number_of_mount_targets": 2,
+            "owner_id": "519568490345",
+            "performance_mode": "generalPurpose",
+            "protection": [
+              {
+                "replication_overwrite": "ENABLED"
+              }
+            ],
+            "provisioned_throughput_in_mibps": 0,
+            "size_in_bytes": [
+              {
+                "value": 529088512,
+                "value_in_ia": 524288,
+                "value_in_standard": 528564224
+              }
+            ],
+            "tags": {
+              "Name": "quransays-prod-data"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-data",
+              "Project": "quransays"
+            },
+            "throughput_mode": "bursting"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_efs_mount_target",
+      "name": "data",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "availability_zone_id": "use1-az4",
+            "availability_zone_name": "us-east-1a",
+            "dns_name": "fs-071e3ed1c6497b82c.efs.us-east-1.amazonaws.com",
+            "file_system_arn": "arn:aws:elasticfilesystem:us-east-1:519568490345:file-system/fs-071e3ed1c6497b82c",
+            "file_system_id": "fs-071e3ed1c6497b82c",
+            "id": "fsmt-097fe572d26737e85",
+            "ip_address": "10.0.3.143",
+            "mount_target_dns_name": "us-east-1a.fs-071e3ed1c6497b82c.efs.us-east-1.amazonaws.com",
+            "network_interface_id": "eni-04f9a8b44ec4abbf1",
+            "owner_id": "519568490345",
+            "security_groups": [
+              "sg-04281619d98f3e3e4"
+            ],
+            "subnet_id": "subnet-0f798d3d9630e83d9",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxODAwMDAwMDAwMDAwLCJkZWxldGUiOjYwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "aws_efs_file_system.data",
+            "aws_security_group.alb",
+            "aws_security_group.app",
+            "aws_security_group.efs",
+            "aws_subnet.private",
+            "aws_vpc.main"
+          ]
+        },
+        {
+          "index_key": 1,
+          "schema_version": 0,
+          "attributes": {
+            "availability_zone_id": "use1-az6",
+            "availability_zone_name": "us-east-1b",
+            "dns_name": "fs-071e3ed1c6497b82c.efs.us-east-1.amazonaws.com",
+            "file_system_arn": "arn:aws:elasticfilesystem:us-east-1:519568490345:file-system/fs-071e3ed1c6497b82c",
+            "file_system_id": "fs-071e3ed1c6497b82c",
+            "id": "fsmt-0351f2fc8759b288c",
+            "ip_address": "10.0.4.123",
+            "mount_target_dns_name": "us-east-1b.fs-071e3ed1c6497b82c.efs.us-east-1.amazonaws.com",
+            "network_interface_id": "eni-01c1301ca144ee85d",
+            "owner_id": "519568490345",
+            "security_groups": [
+              "sg-04281619d98f3e3e4"
+            ],
+            "subnet_id": "subnet-03e8f5a44cf9f0251",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxODAwMDAwMDAwMDAwLCJkZWxldGUiOjYwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "aws_efs_file_system.data",
+            "aws_security_group.alb",
+            "aws_security_group.app",
+            "aws_security_group.efs",
+            "aws_subnet.private",
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_eip",
+      "name": "nat",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "address": null,
+            "allocation_id": "eipalloc-0dc49a48f9b9a7b2d",
+            "arn": "arn:aws:ec2:us-east-1:519568490345:elastic-ip/eipalloc-0dc49a48f9b9a7b2d",
+            "associate_with_private_ip": null,
+            "association_id": "eipassoc-02f53172739a3d02d",
+            "carrier_ip": "",
+            "customer_owned_ip": "",
+            "customer_owned_ipv4_pool": "",
+            "domain": "vpc",
+            "id": "eipalloc-0dc49a48f9b9a7b2d",
+            "instance": "",
+            "ipam_pool_id": null,
+            "network_border_group": "us-east-1",
+            "network_interface": "eni-04824166a2f4741a4",
+            "private_dns": "ip-10-0-1-91.ec2.internal",
+            "private_ip": "10.0.1.91",
+            "ptr_record": "",
+            "public_dns": "ec2-54-208-50-95.compute-1.amazonaws.com",
+            "public_ip": "54.208.50.95",
+            "public_ipv4_pool": "amazon",
+            "tags": {
+              "Name": "quransays-prod-nat-eip"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-nat-eip",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc": true
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiZGVsZXRlIjoxODAwMDAwMDAwMDAsInJlYWQiOjkwMDAwMDAwMDAwMCwidXBkYXRlIjozMDAwMDAwMDAwMDB9fQ==",
+          "dependencies": [
+            "aws_internet_gateway.main",
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_iam_openid_connect_provider",
+      "name": "github_actions",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:iam::519568490345:oidc-provider/token.actions.githubusercontent.com",
+            "client_id_list": [
+              "sts.amazonaws.com"
+            ],
+            "id": "arn:aws:iam::519568490345:oidc-provider/token.actions.githubusercontent.com",
+            "tags": {
+              "Name": "quransays-prod-oidc-github"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-oidc-github",
+              "Project": "quransays"
+            },
+            "thumbprint_list": [
+              "6938fd4d98bab03faadb97b34396831e3780aea1"
+            ],
+            "url": "token.actions.githubusercontent.com"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_iam_role",
+      "name": "ecs_execution",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:iam::519568490345:role/quransays-prod-ecs-execution",
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+            "create_date": "2026-05-14T17:14:11Z",
+            "description": "",
+            "force_detach_policies": false,
+            "id": "quransays-prod-ecs-execution",
+            "inline_policy": [
+              {
+                "name": "quransays-prod-secrets-read",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/anthropic-api-key-dEVAWJ\",\"arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/claude-api-key-r1FSSo\",\"arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openai-api-key-lMkJ2L\",\"arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openrouter-api-key-jsDD0D\"]}]}"
+              }
+            ],
+            "managed_policy_arns": [
+              "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+            ],
+            "max_session_duration": 3600,
+            "name": "quransays-prod-ecs-execution",
+            "name_prefix": "",
+            "path": "/",
+            "permissions_boundary": "",
+            "tags": {
+              "Name": "quransays-prod-ecs-execution"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-ecs-execution",
+              "Project": "quransays"
+            },
+            "unique_id": "AROAXR6FR75UTNCSAWXON"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_iam_role",
+      "name": "ecs_task",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:iam::519568490345:role/quransays-prod-ecs-task",
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"ecs-tasks.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+            "create_date": "2026-05-14T17:14:11Z",
+            "description": "",
+            "force_detach_policies": false,
+            "id": "quransays-prod-ecs-task",
+            "inline_policy": [
+              {
+                "name": "quransays-prod-cloudwatch-logs",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-web:*\",\"arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-chroma:*\",\"arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-mongodb:*\"]}]}"
+              },
+              {
+                "name": "quransays-prod-efs-access",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"elasticfilesystem:ClientMount\",\"elasticfilesystem:ClientWrite\",\"elasticfilesystem:ClientRootAccess\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:elasticfilesystem:us-east-1:519568490345:file-system/fs-071e3ed1c6497b82c\"}]}"
+              }
+            ],
+            "managed_policy_arns": [],
+            "max_session_duration": 3600,
+            "name": "quransays-prod-ecs-task",
+            "name_prefix": "",
+            "path": "/",
+            "permissions_boundary": "",
+            "tags": {
+              "Name": "quransays-prod-ecs-task"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-ecs-task",
+              "Project": "quransays"
+            },
+            "unique_id": "AROAXR6FR75UUV4J7ELJV"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_iam_role",
+      "name": "github_actions_deploy",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:iam::519568490345:role/quransays-prod-github-deploy",
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"token.actions.githubusercontent.com:aud\":\"sts.amazonaws.com\",\"token.actions.githubusercontent.com:sub\":\"repo:Noor-e-Bilal/QuranSays:ref:refs/heads/master\"}},\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"arn:aws:iam::519568490345:oidc-provider/token.actions.githubusercontent.com\"}}],\"Version\":\"2012-10-17\"}",
+            "create_date": "2026-05-21T06:54:10Z",
+            "description": "",
+            "force_detach_policies": false,
+            "id": "quransays-prod-github-deploy",
+            "inline_policy": [
+              {
+                "name": "quransays-prod-github-deploy-policy",
+                "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"ecr:GetAuthorizationToken\"],\"Effect\":\"Allow\",\"Resource\":[\"*\"],\"Sid\":\"ECRGetAuthToken\"},{\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\",\"ecr:PutImage\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ecr:us-east-1:519568490345:repository/quransays-prod-web\"],\"Sid\":\"ECRPushImage\"},{\"Action\":[\"ecs:RegisterTaskDefinition\",\"ecs:DescribeTaskDefinition\"],\"Effect\":\"Allow\",\"Resource\":[\"*\"],\"Sid\":\"ECSDeployTaskDef\"},{\"Action\":[\"ecs:UpdateService\",\"ecs:DescribeServices\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ecs:us-east-1:519568490345:service/quransays-prod-cluster/quransays-prod-svc\"],\"Sid\":\"ECSDeployService\"},{\"Action\":[\"ecs:DescribeTasks\",\"ecs:ListTasks\"],\"Condition\":{\"ArnEquals\":{\"ecs:cluster\":\"arn:aws:ecs:us-east-1:519568490345:cluster/quransays-prod-cluster\"}},\"Effect\":\"Allow\",\"Resource\":[\"*\"],\"Sid\":\"ECSDescribeTasks\"},{\"Action\":[\"iam:PassRole\"],\"Condition\":{\"StringEquals\":{\"iam:PassedToService\":\"ecs-tasks.amazonaws.com\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:iam::519568490345:role/quransays-prod-ecs-execution\",\"arn:aws:iam::519568490345:role/quransays-prod-ecs-task\"],\"Sid\":\"IAMPassRoleToECS\"}]}"
+              }
+            ],
+            "managed_policy_arns": [],
+            "max_session_duration": 3600,
+            "name": "quransays-prod-github-deploy",
+            "name_prefix": "",
+            "path": "/",
+            "permissions_boundary": "",
+            "tags": {
+              "Name": "quransays-prod-github-deploy"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-github-deploy",
+              "Project": "quransays"
+            },
+            "unique_id": "AROAXR6FR75UVNQHK3ZX5"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_iam_openid_connect_provider.github_actions"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "ecs_execution_secrets",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "quransays-prod-ecs-execution:quransays-prod-secrets-read",
+            "name": "quransays-prod-secrets-read",
+            "name_prefix": "",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"secretsmanager:GetSecretValue\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/anthropic-api-key-dEVAWJ\",\"arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/claude-api-key-r1FSSo\",\"arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openai-api-key-lMkJ2L\",\"arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openrouter-api-key-jsDD0D\"]}]}",
+            "role": "quransays-prod-ecs-execution"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_iam_role.ecs_execution",
+            "aws_secretsmanager_secret.anthropic_api_key",
+            "aws_secretsmanager_secret.claude_api_key",
+            "aws_secretsmanager_secret.openai_api_key",
+            "aws_secretsmanager_secret.openrouter_api_key"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "ecs_task_efs",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "quransays-prod-ecs-task:quransays-prod-efs-access",
+            "name": "quransays-prod-efs-access",
+            "name_prefix": "",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"elasticfilesystem:ClientMount\",\"elasticfilesystem:ClientWrite\",\"elasticfilesystem:ClientRootAccess\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:elasticfilesystem:us-east-1:519568490345:file-system/fs-071e3ed1c6497b82c\"}]}",
+            "role": "quransays-prod-ecs-task"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_efs_file_system.data",
+            "aws_iam_role.ecs_task"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "ecs_task_logs",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "quransays-prod-ecs-task:quransays-prod-cloudwatch-logs",
+            "name": "quransays-prod-cloudwatch-logs",
+            "name_prefix": "",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"logs:CreateLogStream\",\"logs:PutLogEvents\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-web:*\",\"arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-chroma:*\",\"arn:aws:logs:us-east-1:519568490345:log-group:/ecs/quransays-prod-mongodb:*\"]}]}",
+            "role": "quransays-prod-ecs-task"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_cloudwatch_log_group.chroma",
+            "aws_cloudwatch_log_group.mongodb",
+            "aws_cloudwatch_log_group.web",
+            "aws_iam_role.ecs_task"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_iam_role_policy",
+      "name": "github_actions_deploy",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "quransays-prod-github-deploy:quransays-prod-github-deploy-policy",
+            "name": "quransays-prod-github-deploy-policy",
+            "name_prefix": "",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:s3:::quransays-prod-build-assets\",\"arn:aws:s3:::quransays-prod-build-assets/*\"],\"Sid\":\"S3ReadBuildAssets\"},{\"Action\":[\"ecr:GetAuthorizationToken\"],\"Effect\":\"Allow\",\"Resource\":[\"*\"],\"Sid\":\"ECRGetAuthToken\"},{\"Action\":[\"ecr:BatchCheckLayerAvailability\",\"ecr:GetDownloadUrlForLayer\",\"ecr:BatchGetImage\",\"ecr:InitiateLayerUpload\",\"ecr:UploadLayerPart\",\"ecr:CompleteLayerUpload\",\"ecr:PutImage\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ecr:us-east-1:519568490345:repository/quransays-prod-web\"],\"Sid\":\"ECRPushImage\"},{\"Action\":[\"ecs:RegisterTaskDefinition\",\"ecs:DescribeTaskDefinition\"],\"Effect\":\"Allow\",\"Resource\":[\"*\"],\"Sid\":\"ECSDeployTaskDef\"},{\"Action\":[\"ecs:UpdateService\",\"ecs:DescribeServices\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:ecs:us-east-1:519568490345:service/quransays-prod-cluster/quransays-prod-svc\"],\"Sid\":\"ECSDeployService\"},{\"Action\":[\"ecs:DescribeTasks\",\"ecs:ListTasks\"],\"Condition\":{\"ArnEquals\":{\"ecs:cluster\":\"arn:aws:ecs:us-east-1:519568490345:cluster/quransays-prod-cluster\"}},\"Effect\":\"Allow\",\"Resource\":[\"*\"],\"Sid\":\"ECSDescribeTasks\"},{\"Action\":[\"iam:PassRole\"],\"Condition\":{\"StringEquals\":{\"iam:PassedToService\":\"ecs-tasks.amazonaws.com\"}},\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:iam::519568490345:role/quransays-prod-ecs-execution\",\"arn:aws:iam::519568490345:role/quransays-prod-ecs-task\"],\"Sid\":\"IAMPassRoleToECS\"}]}",
+            "role": "quransays-prod-github-deploy"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_cloudwatch_log_group.chroma",
+            "aws_cloudwatch_log_group.mongodb",
+            "aws_cloudwatch_log_group.valkey",
+            "aws_cloudwatch_log_group.web",
+            "aws_ecr_repository.web",
+            "aws_ecs_cluster.main",
+            "aws_ecs_service.app",
+            "aws_ecs_task_definition.app",
+            "aws_efs_access_point.mongodb",
+            "aws_efs_file_system.data",
+            "aws_iam_openid_connect_provider.github_actions",
+            "aws_iam_role.ecs_execution",
+            "aws_iam_role.ecs_task",
+            "aws_iam_role.github_actions_deploy",
+            "aws_lb.main",
+            "aws_lb_listener.http",
+            "aws_lb_target_group.app",
+            "aws_s3_bucket.build_assets",
+            "aws_secretsmanager_secret.anthropic_api_key",
+            "aws_secretsmanager_secret.claude_api_key",
+            "aws_secretsmanager_secret.openai_api_key",
+            "aws_secretsmanager_secret.openrouter_api_key",
+            "aws_security_group.alb",
+            "aws_security_group.app",
+            "aws_subnet.private",
+            "aws_subnet.public",
+            "aws_vpc.main",
+            "data.aws_caller_identity.current"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_iam_role_policy_attachment",
+      "name": "ecs_execution_managed",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "quransays-prod-ecs-execution-20260514171412773300000009",
+            "policy_arn": "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
+            "role": "quransays-prod-ecs-execution"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_iam_role.ecs_execution"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_internet_gateway",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:internet-gateway/igw-0223bbf3a465c53c6",
+            "id": "igw-0223bbf3a465c53c6",
+            "owner_id": "519568490345",
+            "tags": {
+              "Name": "quransays-prod-igw"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-igw",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_lb",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": []
+    },
+    {
+      "mode": "managed",
+      "type": "aws_lb_target_group",
+      "name": "app",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:elasticloadbalancing:us-east-1:519568490345:targetgroup/quransays-prod-tg/a4faeaee1affc562",
+            "arn_suffix": "targetgroup/quransays-prod-tg/a4faeaee1affc562",
+            "connection_termination": null,
+            "deregistration_delay": "300",
+            "health_check": [
+              {
+                "enabled": true,
+                "healthy_threshold": 2,
+                "interval": 30,
+                "matcher": "200",
+                "path": "/api/health",
+                "port": "traffic-port",
+                "protocol": "HTTP",
+                "timeout": 5,
+                "unhealthy_threshold": 3
+              }
+            ],
+            "id": "arn:aws:elasticloadbalancing:us-east-1:519568490345:targetgroup/quransays-prod-tg/a4faeaee1affc562",
+            "ip_address_type": "ipv4",
+            "lambda_multi_value_headers_enabled": false,
+            "load_balancer_arns": [],
+            "load_balancing_algorithm_type": "round_robin",
+            "load_balancing_anomaly_mitigation": "off",
+            "load_balancing_cross_zone_enabled": "use_load_balancer_configuration",
+            "name": "quransays-prod-tg",
+            "name_prefix": "",
+            "port": 3000,
+            "preserve_client_ip": null,
+            "protocol": "HTTP",
+            "protocol_version": "HTTP1",
+            "proxy_protocol_v2": false,
+            "slow_start": 0,
+            "stickiness": [
+              {
+                "cookie_duration": 86400,
+                "cookie_name": "",
+                "enabled": false,
+                "type": "lb_cookie"
+              }
+            ],
+            "tags": {
+              "Name": "quransays-prod-tg"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-tg",
+              "Project": "quransays"
+            },
+            "target_failover": [
+              {
+                "on_deregistration": null,
+                "on_unhealthy": null
+              }
+            ],
+            "target_group_health": [
+              {
+                "dns_failover": [
+                  {
+                    "minimum_healthy_targets_count": "1",
+                    "minimum_healthy_targets_percentage": "off"
+                  }
+                ],
+                "unhealthy_state_routing": [
+                  {
+                    "minimum_healthy_targets_count": 1,
+                    "minimum_healthy_targets_percentage": "off"
+                  }
+                ]
+              }
+            ],
+            "target_health_state": [
+              {
+                "enable_unhealthy_connection_termination": null,
+                "unhealthy_draining_interval": null
+              }
+            ],
+            "target_type": "ip",
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_nat_gateway",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "allocation_id": "eipalloc-0dc49a48f9b9a7b2d",
+            "association_id": "eipassoc-02f53172739a3d02d",
+            "connectivity_type": "public",
+            "id": "nat-07dab0df3d2743f61",
+            "network_interface_id": "eni-04824166a2f4741a4",
+            "private_ip": "10.0.1.91",
+            "public_ip": "54.208.50.95",
+            "secondary_allocation_ids": [],
+            "secondary_private_ip_address_count": 0,
+            "secondary_private_ip_addresses": [],
+            "subnet_id": "subnet-0823ab28f490c0cfd",
+            "tags": {
+              "Name": "quransays-prod-nat"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-nat",
+              "Project": "quransays"
+            },
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6MTgwMDAwMDAwMDAwMCwidXBkYXRlIjo2MDAwMDAwMDAwMDB9fQ==",
+          "dependencies": [
+            "aws_eip.nat",
+            "aws_internet_gateway.main",
+            "aws_subnet.public",
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_route_table",
+      "name": "private",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:route-table/rtb-0ef9b5c4fa8ae32e3",
+            "id": "rtb-0ef9b5c4fa8ae32e3",
+            "owner_id": "519568490345",
+            "propagating_vgws": [],
+            "route": [
+              {
+                "carrier_gateway_id": "",
+                "cidr_block": "0.0.0.0/0",
+                "core_network_arn": "",
+                "destination_prefix_list_id": "",
+                "egress_only_gateway_id": "",
+                "gateway_id": "",
+                "ipv6_cidr_block": "",
+                "local_gateway_id": "",
+                "nat_gateway_id": "nat-07dab0df3d2743f61",
+                "network_interface_id": "",
+                "transit_gateway_id": "",
+                "vpc_endpoint_id": "",
+                "vpc_peering_connection_id": ""
+              }
+            ],
+            "tags": {
+              "Name": "quransays-prod-rt-private"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-rt-private",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjEyMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "aws_eip.nat",
+            "aws_internet_gateway.main",
+            "aws_nat_gateway.main",
+            "aws_subnet.public",
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_route_table",
+      "name": "public",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:route-table/rtb-07a1fbfbe9fcfed2e",
+            "id": "rtb-07a1fbfbe9fcfed2e",
+            "owner_id": "519568490345",
+            "propagating_vgws": [],
+            "route": [
+              {
+                "carrier_gateway_id": "",
+                "cidr_block": "0.0.0.0/0",
+                "core_network_arn": "",
+                "destination_prefix_list_id": "",
+                "egress_only_gateway_id": "",
+                "gateway_id": "igw-0223bbf3a465c53c6",
+                "ipv6_cidr_block": "",
+                "local_gateway_id": "",
+                "nat_gateway_id": "",
+                "network_interface_id": "",
+                "transit_gateway_id": "",
+                "vpc_endpoint_id": "",
+                "vpc_peering_connection_id": ""
+              }
+            ],
+            "tags": {
+              "Name": "quransays-prod-rt-public"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-rt-public",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjEyMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "aws_internet_gateway.main",
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_route_table_association",
+      "name": "private",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "gateway_id": "",
+            "id": "rtbassoc-04698cdcc81b830c6",
+            "route_table_id": "rtb-0ef9b5c4fa8ae32e3",
+            "subnet_id": "subnet-0f798d3d9630e83d9",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjEyMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "aws_eip.nat",
+            "aws_internet_gateway.main",
+            "aws_nat_gateway.main",
+            "aws_route_table.private",
+            "aws_subnet.private",
+            "aws_subnet.public",
+            "aws_vpc.main"
+          ]
+        },
+        {
+          "index_key": 1,
+          "schema_version": 0,
+          "attributes": {
+            "gateway_id": "",
+            "id": "rtbassoc-0ccdd8cedc2b4116a",
+            "route_table_id": "rtb-0ef9b5c4fa8ae32e3",
+            "subnet_id": "subnet-03e8f5a44cf9f0251",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjEyMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "aws_eip.nat",
+            "aws_internet_gateway.main",
+            "aws_nat_gateway.main",
+            "aws_route_table.private",
+            "aws_subnet.private",
+            "aws_subnet.public",
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_route_table_association",
+      "name": "public",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 0,
+          "attributes": {
+            "gateway_id": "",
+            "id": "rtbassoc-0070cdcaf13307423",
+            "route_table_id": "rtb-07a1fbfbe9fcfed2e",
+            "subnet_id": "subnet-0823ab28f490c0cfd",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjEyMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "aws_internet_gateway.main",
+            "aws_route_table.public",
+            "aws_subnet.public",
+            "aws_vpc.main"
+          ]
+        },
+        {
+          "index_key": 1,
+          "schema_version": 0,
+          "attributes": {
+            "gateway_id": "",
+            "id": "rtbassoc-05a4d9eea73af54b6",
+            "route_table_id": "rtb-07a1fbfbe9fcfed2e",
+            "subnet_id": "subnet-074e115e4bcacd3c9",
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozMDAwMDAwMDAwMDAsImRlbGV0ZSI6MzAwMDAwMDAwMDAwLCJ1cGRhdGUiOjEyMDAwMDAwMDAwMH19",
+          "dependencies": [
+            "aws_internet_gateway.main",
+            "aws_route_table.public",
+            "aws_subnet.public",
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_s3_bucket",
+      "name": "build_assets",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "acceleration_status": "",
+            "acl": null,
+            "arn": "arn:aws:s3:::quransays-prod-build-assets",
+            "bucket": "quransays-prod-build-assets",
+            "bucket_domain_name": "quransays-prod-build-assets.s3.amazonaws.com",
+            "bucket_prefix": "",
+            "bucket_regional_domain_name": "quransays-prod-build-assets.s3.us-east-1.amazonaws.com",
+            "cors_rule": [],
+            "force_destroy": false,
+            "grant": [
+              {
+                "id": "bbf5cdba156380b9b7ccc0d70f6244319fc35ba13afc48a4c50dcaae0dbb2e9f",
+                "permissions": [
+                  "FULL_CONTROL"
+                ],
+                "type": "CanonicalUser",
+                "uri": ""
+              }
+            ],
+            "hosted_zone_id": "Z3AQBSTGFYJSTF",
+            "id": "quransays-prod-build-assets",
+            "lifecycle_rule": [],
+            "logging": [],
+            "object_lock_configuration": [],
+            "object_lock_enabled": false,
+            "policy": "",
+            "region": "us-east-1",
+            "replication_configuration": [],
+            "request_payer": "BucketOwner",
+            "server_side_encryption_configuration": [
+              {
+                "rule": [
+                  {
+                    "apply_server_side_encryption_by_default": [
+                      {
+                        "kms_master_key_id": "",
+                        "sse_algorithm": "AES256"
+                      }
+                    ],
+                    "bucket_key_enabled": false
+                  }
+                ]
+              }
+            ],
+            "tags": {
+              "Name": "quransays-prod-build-assets"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-build-assets",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "versioning": [
+              {
+                "enabled": false,
+                "mfa_delete": false
+              }
+            ],
+            "website": [],
+            "website_domain": null,
+            "website_endpoint": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxMjAwMDAwMDAwMDAwLCJkZWxldGUiOjM2MDAwMDAwMDAwMDAsInJlYWQiOjEyMDAwMDAwMDAwMDAsInVwZGF0ZSI6MTIwMDAwMDAwMDAwMH19"
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_s3_bucket_public_access_block",
+      "name": "build_assets",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "block_public_acls": true,
+            "block_public_policy": true,
+            "bucket": "quransays-prod-build-assets",
+            "id": "quransays-prod-build-assets",
+            "ignore_public_acls": true,
+            "restrict_public_buckets": true
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_s3_bucket.build_assets"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_s3_bucket_server_side_encryption_configuration",
+      "name": "build_assets",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "quransays-prod-build-assets",
+            "expected_bucket_owner": "",
+            "id": "quransays-prod-build-assets",
+            "rule": [
+              {
+                "apply_server_side_encryption_by_default": [
+                  {
+                    "kms_master_key_id": "",
+                    "sse_algorithm": "AES256"
+                  }
+                ],
+                "bucket_key_enabled": null
+              }
+            ]
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_s3_bucket.build_assets"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_s3_bucket_versioning",
+      "name": "build_assets",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "bucket": "quransays-prod-build-assets",
+            "expected_bucket_owner": "",
+            "id": "quransays-prod-build-assets",
+            "mfa": null,
+            "versioning_configuration": [
+              {
+                "mfa_delete": "",
+                "status": "Enabled"
+              }
+            ]
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_s3_bucket.build_assets"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret",
+      "name": "anthropic_api_key",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/anthropic-api-key-JJXi6n",
+            "description": "opencode.ai API key — query reformulation via minimax-m2.5-free",
+            "force_overwrite_replica_secret": false,
+            "id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/anthropic-api-key-JJXi6n",
+            "kms_key_id": "",
+            "name": "quransays-prod/anthropic-api-key",
+            "name_prefix": "",
+            "policy": "",
+            "recovery_window_in_days": 7,
+            "replica": [],
+            "tags": {
+              "Name": "quransays-prod-secret-anthropic-api-key"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-secret-anthropic-api-key",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret",
+      "name": "claude_api_key",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/claude-api-key-HOPlsq",
+            "description": "Anthropic Claude API key",
+            "force_overwrite_replica_secret": false,
+            "id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/claude-api-key-HOPlsq",
+            "kms_key_id": "",
+            "name": "quransays-prod/claude-api-key",
+            "name_prefix": "",
+            "policy": "",
+            "recovery_window_in_days": 7,
+            "replica": [],
+            "tags": {
+              "Name": "quransays-prod-secret-claude-api-key"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-secret-claude-api-key",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret",
+      "name": "openai_api_key",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openai-api-key-1Sogwu",
+            "description": "OpenAI API key",
+            "force_overwrite_replica_secret": false,
+            "id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openai-api-key-1Sogwu",
+            "kms_key_id": "",
+            "name": "quransays-prod/openai-api-key",
+            "name_prefix": "",
+            "policy": "",
+            "recovery_window_in_days": 7,
+            "replica": [],
+            "tags": {
+              "Name": "quransays-prod-secret-openai-api-key"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-secret-openai-api-key",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret",
+      "name": "openrouter_api_key",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openrouter-api-key-AQbYct",
+            "description": "OpenRouter API key (free models: Gemini Flash, Llama-4, etc.)",
+            "force_overwrite_replica_secret": false,
+            "id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openrouter-api-key-AQbYct",
+            "kms_key_id": "",
+            "name": "quransays-prod/openrouter-api-key",
+            "name_prefix": "",
+            "policy": "",
+            "recovery_window_in_days": 7,
+            "replica": [],
+            "tags": {
+              "Name": "quransays-prod-secret-openrouter-api-key"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-secret-openrouter-api-key",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "bnVsbA=="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret_version",
+      "name": "anthropic_api_key",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/anthropic-api-key-dEVAWJ",
+            "has_secret_string_wo": null,
+            "id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/anthropic-api-key-dEVAWJ|terraform-20260514171411957700000006",
+            "secret_binary": "",
+            "secret_id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/anthropic-api-key-dEVAWJ",
+            "secret_string": "REPLACE_ME",
+            "secret_string_wo": null,
+            "secret_string_wo_version": null,
+            "version_id": "terraform-20260514171411957700000006",
+            "version_stages": [
+              "AWSPREVIOUS"
+            ]
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_binary"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_string"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_string_wo"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_secretsmanager_secret.anthropic_api_key"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret_version",
+      "name": "claude_api_key",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/claude-api-key-r1FSSo",
+            "has_secret_string_wo": null,
+            "id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/claude-api-key-r1FSSo|terraform-20260514171412215700000008",
+            "secret_binary": "",
+            "secret_id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/claude-api-key-r1FSSo",
+            "secret_string": "REPLACE_ME",
+            "secret_string_wo": null,
+            "secret_string_wo_version": null,
+            "version_id": "terraform-20260514171412215700000008",
+            "version_stages": [
+              "AWSCURRENT"
+            ]
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_binary"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_string"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_string_wo"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_secretsmanager_secret.claude_api_key"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret_version",
+      "name": "openai_api_key",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openai-api-key-lMkJ2L",
+            "has_secret_string_wo": null,
+            "id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openai-api-key-lMkJ2L|terraform-20260514171411853400000005",
+            "secret_binary": "",
+            "secret_id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openai-api-key-lMkJ2L",
+            "secret_string": "REPLACE_ME",
+            "secret_string_wo": null,
+            "secret_string_wo_version": null,
+            "version_id": "terraform-20260514171411853400000005",
+            "version_stages": [
+              "AWSCURRENT"
+            ]
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_binary"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_string"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_string_wo"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_secretsmanager_secret.openai_api_key"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_secretsmanager_secret_version",
+      "name": "openrouter_api_key",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "arn": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openrouter-api-key-jsDD0D",
+            "has_secret_string_wo": null,
+            "id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openrouter-api-key-jsDD0D|terraform-20260514171412013100000007",
+            "secret_binary": "",
+            "secret_id": "arn:aws:secretsmanager:us-east-1:519568490345:secret:quransays-prod/openrouter-api-key-jsDD0D",
+            "secret_string": "REPLACE_ME",
+            "secret_string_wo": null,
+            "secret_string_wo_version": null,
+            "version_id": "terraform-20260514171412013100000007",
+            "version_stages": [
+              "AWSCURRENT"
+            ]
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_binary"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_string"
+              }
+            ],
+            [
+              {
+                "type": "get_attr",
+                "value": "secret_string_wo"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "bnVsbA==",
+          "dependencies": [
+            "aws_secretsmanager_secret.openrouter_api_key"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "alb",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:security-group/sg-08c7d2e8f7d000cc6",
+            "description": "Allow inbound HTTP/HTTPS to the Application Load Balancer",
+            "egress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "",
+                "from_port": 0,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "-1",
+                "security_groups": [],
+                "self": false,
+                "to_port": 0
+              }
+            ],
+            "id": "sg-08c7d2e8f7d000cc6",
+            "ingress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "HTTP",
+                "from_port": 80,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [],
+                "self": false,
+                "to_port": 80
+              },
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "HTTPS",
+                "from_port": 443,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [],
+                "self": false,
+                "to_port": 443
+              }
+            ],
+            "name": "quransays-prod-alb-sg",
+            "name_prefix": "",
+            "owner_id": "519568490345",
+            "revoke_rules_on_delete": false,
+            "tags": {
+              "Name": "quransays-prod-alb-sg"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-alb-sg",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6OTAwMDAwMDAwMDAwfSwic2NoZW1hX3ZlcnNpb24iOiIxIn0=",
+          "dependencies": [
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "app",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:security-group/sg-0fc1b78660846d0dc",
+            "description": "ECS tasks - accept port 3000 from ALB only",
+            "egress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "",
+                "from_port": 0,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "-1",
+                "security_groups": [],
+                "self": false,
+                "to_port": 0
+              }
+            ],
+            "id": "sg-0fc1b78660846d0dc",
+            "ingress": [
+              {
+                "cidr_blocks": [],
+                "description": "Next.js port from ALB",
+                "from_port": 3000,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [
+                  "sg-08c7d2e8f7d000cc6"
+                ],
+                "self": false,
+                "to_port": 3000
+              }
+            ],
+            "name": "quransays-prod-app-sg",
+            "name_prefix": "",
+            "owner_id": "519568490345",
+            "revoke_rules_on_delete": false,
+            "tags": {
+              "Name": "quransays-prod-app-sg"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-app-sg",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6OTAwMDAwMDAwMDAwfSwic2NoZW1hX3ZlcnNpb24iOiIxIn0=",
+          "dependencies": [
+            "aws_security_group.alb",
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_security_group",
+      "name": "efs",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:security-group/sg-04281619d98f3e3e4",
+            "description": "EFS - accept NFS (2049) from ECS task security group only",
+            "egress": [
+              {
+                "cidr_blocks": [
+                  "0.0.0.0/0"
+                ],
+                "description": "",
+                "from_port": 0,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "-1",
+                "security_groups": [],
+                "self": false,
+                "to_port": 0
+              }
+            ],
+            "id": "sg-04281619d98f3e3e4",
+            "ingress": [
+              {
+                "cidr_blocks": [],
+                "description": "NFS from ECS tasks",
+                "from_port": 2049,
+                "ipv6_cidr_blocks": [],
+                "prefix_list_ids": [],
+                "protocol": "tcp",
+                "security_groups": [
+                  "sg-0fc1b78660846d0dc"
+                ],
+                "self": false,
+                "to_port": 2049
+              }
+            ],
+            "name": "quransays-prod-efs-sg",
+            "name_prefix": "",
+            "owner_id": "519568490345",
+            "revoke_rules_on_delete": false,
+            "tags": {
+              "Name": "quransays-prod-efs-sg"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-efs-sg",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6OTAwMDAwMDAwMDAwfSwic2NoZW1hX3ZlcnNpb24iOiIxIn0=",
+          "dependencies": [
+            "aws_security_group.alb",
+            "aws_security_group.app",
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_subnet",
+      "name": "private",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:subnet/subnet-0f798d3d9630e83d9",
+            "assign_ipv6_address_on_creation": false,
+            "availability_zone": "us-east-1a",
+            "availability_zone_id": "use1-az4",
+            "cidr_block": "10.0.3.0/24",
+            "customer_owned_ipv4_pool": "",
+            "enable_dns64": false,
+            "enable_lni_at_device_index": 0,
+            "enable_resource_name_dns_a_record_on_launch": false,
+            "enable_resource_name_dns_aaaa_record_on_launch": false,
+            "id": "subnet-0f798d3d9630e83d9",
+            "ipv6_cidr_block": "",
+            "ipv6_cidr_block_association_id": "",
+            "ipv6_native": false,
+            "map_customer_owned_ip_on_launch": false,
+            "map_public_ip_on_launch": false,
+            "outpost_arn": "",
+            "owner_id": "519568490345",
+            "private_dns_hostname_type_on_launch": "ip-name",
+            "tags": {
+              "Name": "quransays-prod-private-1"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-private-1",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6MTIwMDAwMDAwMDAwMH0sInNjaGVtYV92ZXJzaW9uIjoiMSJ9",
+          "dependencies": [
+            "aws_vpc.main"
+          ]
+        },
+        {
+          "index_key": 1,
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:subnet/subnet-03e8f5a44cf9f0251",
+            "assign_ipv6_address_on_creation": false,
+            "availability_zone": "us-east-1b",
+            "availability_zone_id": "use1-az6",
+            "cidr_block": "10.0.4.0/24",
+            "customer_owned_ipv4_pool": "",
+            "enable_dns64": false,
+            "enable_lni_at_device_index": 0,
+            "enable_resource_name_dns_a_record_on_launch": false,
+            "enable_resource_name_dns_aaaa_record_on_launch": false,
+            "id": "subnet-03e8f5a44cf9f0251",
+            "ipv6_cidr_block": "",
+            "ipv6_cidr_block_association_id": "",
+            "ipv6_native": false,
+            "map_customer_owned_ip_on_launch": false,
+            "map_public_ip_on_launch": false,
+            "outpost_arn": "",
+            "owner_id": "519568490345",
+            "private_dns_hostname_type_on_launch": "ip-name",
+            "tags": {
+              "Name": "quransays-prod-private-2"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-private-2",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6MTIwMDAwMDAwMDAwMH0sInNjaGVtYV92ZXJzaW9uIjoiMSJ9",
+          "dependencies": [
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_subnet",
+      "name": "public",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "index_key": 0,
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:subnet/subnet-0823ab28f490c0cfd",
+            "assign_ipv6_address_on_creation": false,
+            "availability_zone": "us-east-1a",
+            "availability_zone_id": "use1-az4",
+            "cidr_block": "10.0.1.0/24",
+            "customer_owned_ipv4_pool": "",
+            "enable_dns64": false,
+            "enable_lni_at_device_index": 0,
+            "enable_resource_name_dns_a_record_on_launch": false,
+            "enable_resource_name_dns_aaaa_record_on_launch": false,
+            "id": "subnet-0823ab28f490c0cfd",
+            "ipv6_cidr_block": "",
+            "ipv6_cidr_block_association_id": "",
+            "ipv6_native": false,
+            "map_customer_owned_ip_on_launch": false,
+            "map_public_ip_on_launch": true,
+            "outpost_arn": "",
+            "owner_id": "519568490345",
+            "private_dns_hostname_type_on_launch": "ip-name",
+            "tags": {
+              "Name": "quransays-prod-public-1"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-public-1",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6MTIwMDAwMDAwMDAwMH0sInNjaGVtYV92ZXJzaW9uIjoiMSJ9",
+          "dependencies": [
+            "aws_vpc.main"
+          ]
+        },
+        {
+          "index_key": 1,
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:subnet/subnet-074e115e4bcacd3c9",
+            "assign_ipv6_address_on_creation": false,
+            "availability_zone": "us-east-1b",
+            "availability_zone_id": "use1-az6",
+            "cidr_block": "10.0.2.0/24",
+            "customer_owned_ipv4_pool": "",
+            "enable_dns64": false,
+            "enable_lni_at_device_index": 0,
+            "enable_resource_name_dns_a_record_on_launch": false,
+            "enable_resource_name_dns_aaaa_record_on_launch": false,
+            "id": "subnet-074e115e4bcacd3c9",
+            "ipv6_cidr_block": "",
+            "ipv6_cidr_block_association_id": "",
+            "ipv6_native": false,
+            "map_customer_owned_ip_on_launch": false,
+            "map_public_ip_on_launch": true,
+            "outpost_arn": "",
+            "owner_id": "519568490345",
+            "private_dns_hostname_type_on_launch": "ip-name",
+            "tags": {
+              "Name": "quransays-prod-public-2"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-public-2",
+              "Project": "quransays"
+            },
+            "timeouts": null,
+            "vpc_id": "vpc-0dceb47d5cb0cfe5d"
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo2MDAwMDAwMDAwMDAsImRlbGV0ZSI6MTIwMDAwMDAwMDAwMH0sInNjaGVtYV92ZXJzaW9uIjoiMSJ9",
+          "dependencies": [
+            "aws_vpc.main"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "aws_vpc",
+      "name": "main",
+      "provider": "provider[\"registry.terraform.io/hashicorp/aws\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "arn": "arn:aws:ec2:us-east-1:519568490345:vpc/vpc-0dceb47d5cb0cfe5d",
+            "assign_generated_ipv6_cidr_block": false,
+            "cidr_block": "10.0.0.0/16",
+            "default_network_acl_id": "acl-049d1691b86cb7f7a",
+            "default_route_table_id": "rtb-0716a7dab3e0b3028",
+            "default_security_group_id": "sg-0de5a5365f8379c70",
+            "dhcp_options_id": "dopt-ed794b97",
+            "enable_dns_hostnames": true,
+            "enable_dns_support": true,
+            "enable_network_address_usage_metrics": false,
+            "id": "vpc-0dceb47d5cb0cfe5d",
+            "instance_tenancy": "default",
+            "ipv4_ipam_pool_id": null,
+            "ipv4_netmask_length": null,
+            "ipv6_association_id": "",
+            "ipv6_cidr_block": "",
+            "ipv6_cidr_block_network_border_group": "",
+            "ipv6_ipam_pool_id": "",
+            "ipv6_netmask_length": 0,
+            "main_route_table_id": "rtb-0716a7dab3e0b3028",
+            "owner_id": "519568490345",
+            "tags": {
+              "Name": "quransays-prod-vpc"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "ManagedBy": "Terraform",
+              "Name": "quransays-prod-vpc",
+              "Project": "quransays"
+            }
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJzY2hlbWFfdmVyc2lvbiI6IjEifQ=="
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}

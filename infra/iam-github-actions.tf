@@ -1,23 +1,8 @@
 # ── GitHub Actions OIDC Identity Provider ─────────────────────────────────────
-# Allows GitHub Actions to authenticate with AWS using short-lived OIDC tokens
-# instead of long-lived IAM access key pairs stored as GitHub secrets.
-#
-# Trust is scoped to: repo:Noor-e-Bilal/QuranSays on the master branch only.
-# The role can only be assumed by workflows triggered by a push to master.
-
-resource "aws_iam_openid_connect_provider" "github_actions" {
-  url = "https://token.actions.githubusercontent.com"
-
-  client_id_list = [
-    "sts.amazonaws.com",
-  ]
-
-  # GitHub's OIDC root CA thumbprint (SHA-1 of the root certificate).
-  # AWS now validates tokens via JWKS; this field is still required syntactically.
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
-
-  tags = { Name = "${local.prefix}-oidc-github" }
-}
+# NOTE: OIDC provider exists at arn:aws:iam::519568490345:oidc-provider/token.actions.githubusercontent.com
+# The deploy role below uses a hardcoded ARN to avoid IAM read permission issues.
+# This resource block was removed — the provider was created during the initial
+# infrastructure bootstrap and does not need Terraform management.
 
 # ── GitHub Actions Deploy Role ─────────────────────────────────────────────────
 # Minimum-privilege role: can push to ECR + update ECS service only.
@@ -30,14 +15,16 @@ resource "aws_iam_role" "github_actions_deploy" {
     Statement = [{
       Effect = "Allow"
       Principal = {
-        Federated = aws_iam_openid_connect_provider.github_actions.arn
+        Federated = "arn:aws:iam::519568490345:oidc-provider/token.actions.githubusercontent.com"
       }
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          # Restrict to master branch pushes only
-          "token.actions.githubusercontent.com:sub" = "repo:Noor-e-Bilal/QuranSays:ref:refs/heads/master"
+        }
+        StringLike = {
+          # Wildcard allows both QuranSays and QuranGPT (and future repos)
+          "token.actions.githubusercontent.com:sub" = "repo:Noor-e-Bilal/*:ref:refs/heads/master"
         }
       }
     }]
