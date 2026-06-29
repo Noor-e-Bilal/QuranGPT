@@ -33,8 +33,9 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           # No access key pairs — OIDC short-lived tokens only
 
-      - name: Update deploy role trust policy for QuranGPT
+      - name: Update deploy role trust and permissions for both repos
         run: |
+          # Update trust policy to allow both QuranSays and QuranGPT
           aws iam update-assume-role-policy \
             --role-name quransays-prod-github-deploy \
             --policy-document '{
@@ -54,6 +55,81 @@ jobs:
                   }
                 }
               }]
+            }'
+          
+          # Also add the QuranGPT ECR repo permission to the deploy policy
+          ACCOUNT_ID="519568490345"
+          QURANSAYS_ECR="arn:aws:ecr:us-east-1:${ACCOUNT_ID}:repository/quransays-prod-web"
+          QURANGPT_ECR="arn:aws:ecr:us-east-1:${ACCOUNT_ID}:repository/qurangpt-prod-web"
+          
+          # Get existing ECR push policy statement, add QuranGPT ECR
+          aws iam put-role-policy \
+            --role-name quransays-prod-github-deploy \
+            --policy-name quransays-prod-github-deploy-policy \
+            --policy-document "{
+              \"Version\": \"2012-10-17\",
+              \"Statement\": [
+                {
+                  \"Sid\": \"ECRGetAuthToken\",
+                  \"Effect\": \"Allow\",
+                  \"Action\": [\"ecr:GetAuthorizationToken\"],
+                  \"Resource\": [\"*\"]
+                },
+                {
+                  \"Sid\": \"ECRPushImage\",
+                  \"Effect\": \"Allow\",
+                  \"Action\": [
+                    \"ecr:BatchCheckLayerAvailability\",
+                    \"ecr:GetDownloadUrlForLayer\",
+                    \"ecr:BatchGetImage\",
+                    \"ecr:InitiateLayerUpload\",
+                    \"ecr:UploadLayerPart\",
+                    \"ecr:CompleteLayerUpload\",
+                    \"ecr:PutImage\"
+                  ],
+                  \"Resource\": [\"${QURANSAYS_ECR}\", \"${QURANGPT_ECR}\"]
+                },
+                {
+                  \"Sid\": \"ECSRegisterTaskDef\",
+                  \"Effect\": \"Allow\",
+                  \"Action\": [\"ecs:RegisterTaskDefinition\", \"ecs:DescribeTaskDefinition\"],
+                  \"Resource\": [\"*\"]
+                },
+                {
+                  \"Sid\": \"ECSDeployService\",
+                  \"Effect\": \"Allow\",
+                  \"Action\": [\"ecs:UpdateService\", \"ecs:DescribeServices\"],
+                  \"Resource\": [\"arn:aws:ecs:us-east-1:${ACCOUNT_ID}:service/quransays-prod-cluster/quransays-prod-svc\", \"arn:aws:ecs:us-east-1:${ACCOUNT_ID}:service/qurangpt-prod-cluster/qurangpt-prod-svc\"]
+                },
+                {
+                  \"Sid\": \"ECSDescribeTasks\",
+                  \"Effect\": \"Allow\",
+                  \"Action\": [\"ecs:DescribeTasks\", \"ecs:ListTasks\"],
+                  \"Resource\": [\"*\"],
+                  \"Condition\": {
+                    \"ArnEquals\": {
+                      \"ecs:cluster\": [\"arn:aws:ecs:us-east-1:${ACCOUNT_ID}:cluster/quransays-prod-cluster\", \"arn:aws:ecs:us-east-1:${ACCOUNT_ID}:cluster/qurangpt-prod-cluster\"]
+                    }
+                  }
+                },
+                {
+                  \"Sid\": \"ECSDescribeTaskDef\",
+                  \"Effect\": \"Allow\",
+                  \"Action\": [\"ecs:DescribeTaskDefinition\"],
+                  \"Resource\": [\"*\"]
+                },
+                {
+                  \"Sid\": \"IAMPassRoleToECS\",
+                  \"Effect\": \"Allow\",
+                  \"Action\": [\"iam:PassRole\"],
+                  \"Resource\": [\"arn:aws:iam::${ACCOUNT_ID}:role/quransays-prod-ecs-*\", \"arn:aws:iam::${ACCOUNT_ID}:role/qurangpt-prod-ecs-*\"],
+                  \"Condition\": {
+                    \"StringEquals\": {
+                      \"iam:PassedToService\": \"ecs-tasks.amazonaws.com\"
+                    }
+                  }
+                }
+              ]
             }'
 
       - name: Login to Amazon ECR
