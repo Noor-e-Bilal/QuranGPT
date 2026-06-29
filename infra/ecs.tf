@@ -216,26 +216,10 @@ resource "aws_ecs_task_definition" "app" {
         # DB_PATH is set as ENV in the Dockerfile (/app/data/quran.db, bundled in image)
         { name = "ANTHROPIC_BASE_URL", value = "https://opencode.ai/zen" },
         { name = "ANTHROPIC_MODEL",    value = "minimax-m2.5-free" },
-      ]
-
-      # API keys are injected from Secrets Manager at task launch time
-      secrets = [
-        {
-          name      = "ANTHROPIC_API_KEY"
-          valueFrom = aws_secretsmanager_secret.anthropic_api_key.arn
-        },
-        {
-          name      = "CLAUDE_API_KEY"
-          valueFrom = aws_secretsmanager_secret.claude_api_key.arn
-        },
-        {
-          name      = "OPENAI_API_KEY"
-          valueFrom = aws_secretsmanager_secret.openai_api_key.arn
-        },
-        {
-          name      = "OPENROUTER_API_KEY"
-          valueFrom = aws_secretsmanager_secret.openrouter_api_key.arn
-        },
+        { name = "ANTHROPIC_API_KEY",  value = "" },
+        { name = "CLAUDE_API_KEY",     value = "" },
+        { name = "OPENAI_API_KEY",     value = "" },
+        { name = "OPENROUTER_API_KEY", value = "" },
       ]
 
       mountPoints = [
