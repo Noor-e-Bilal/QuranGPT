@@ -33,6 +33,47 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           # No access key pairs — OIDC short-lived tokens only
 
+      # ── Re-apply deploy role inline policy ──────────────────────────────────
+      # This runs at the start of every deploy to ensure the GitHub Actions
+      # role has the correct minimum-privilege permissions. The role was
+      # initially created by Terraform with the same policy.
+      - name: Re-apply deploy role inline policy
+        run: |
+          ACCOUNT_ID="519568490345"
+          aws iam put-role-policy \
+            --role-name quransays-prod-github-deploy \
+            --policy-name quransays-prod-github-deploy-policy \
+            --policy-document '{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Sid": "ECRGetAuth",
+                  "Effect": "Allow",
+                  "Action": ["ecr:GetAuthorizationToken"],
+                  "Resource": ["*"]
+                },
+                {
+                  "Sid": "ECRPush",
+                  "Effect": "Allow",
+                  "Action": ["ecr:BatchCheckLayerAvailability", "ecr:GetDownloadUrlForLayer", "ecr:BatchGetImage", "ecr:InitiateLayerUpload", "ecr:UploadLayerPart", "ecr:CompleteLayerUpload", "ecr:PutImage"],
+                  "Resource": ["arn:aws:ecr:us-east-1:'$ACCOUNT_ID':repository/quransays-prod-web", "arn:aws:ecr:us-east-1:'$ACCOUNT_ID':repository/qurangpt-prod-web"]
+                },
+                {
+                  "Sid": "ECSAll",
+                  "Effect": "Allow",
+                  "Action": ["ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition", "ecs:UpdateService", "ecs:DescribeServices", "ecs:DescribeTasks", "ecs:ListTasks"],
+                  "Resource": ["*"]
+                },
+                {
+                  "Sid": "IAMPassRole",
+                  "Effect": "Allow",
+                  "Action": ["iam:PassRole"],
+                  "Resource": ["arn:aws:iam::'$ACCOUNT_ID':role/quransays-prod-ecs-*", "arn:aws:iam::'$ACCOUNT_ID':role/qurangpt-prod-ecs-*"],
+                  "Condition": {"StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}}
+                }
+              ]
+            }'
+
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
